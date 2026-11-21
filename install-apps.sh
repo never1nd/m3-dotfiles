@@ -178,8 +178,35 @@ for id in $SELECTED; do
 done
 
 if [[ "${#PACMAN_PKGS[@]}" -gt 0 ]]; then
-    echo "==> Установка через pacman: ${PACMAN_PKGS[*]}"
-    run sudo pacman -S --needed --noconfirm "${PACMAN_PKGS[@]}"
+    if [[ "${M3_FORCE_DISTRO:-}" != "fedora" && "${M3_FORCE_DISTRO:-}" != "debian" ]] && command -v pacman >/dev/null 2>&1; then
+        echo "==> Установка через pacman: ${PACMAN_PKGS[*]}"
+        AVAIL=(); MISSING=()
+        for p in "${PACMAN_PKGS[@]}"; do
+            if [[ "$DRY_RUN" -eq 1 ]] || pacman -Si "$p" >/dev/null 2>&1; then AVAIL+=("$p"); else MISSING+=("$p"); fi
+        done
+        [[ "${#AVAIL[@]}" -gt 0 ]] && run sudo pacman -S --needed --noconfirm "${AVAIL[@]}"
+        if [[ "${#MISSING[@]}" -gt 0 ]]; then
+            echo "  [INFO] Нет в pacman ($ARCH): ${MISSING[*]}"
+            if command -v paru >/dev/null 2>&1; then run paru -S --needed --noconfirm "${MISSING[@]}" || true; fi
+        fi
+    else
+        # Non-Arch distros (Fedora / Debian / Ubuntu / ARM64): install cross-arch Flatpak equivalents!
+        FP_APPS=()
+        for id in $SELECTED; do
+            case "$id" in
+                zen-browser)  FP_APPS+=(app.zen_browser.zen) ;;
+                ayugram)      FP_APPS+=(com.ayugram.desktop) ;;
+                vscodium)     FP_APPS+=(com.vscodium.codium) ;;
+                vesktop)      FP_APPS+=(dev.vencord.Vesktop) ;;
+                pear-desktop) FP_APPS+=(com.github.th_ch.youtube_music) ;;
+                steam)        FP_APPS+=(com.valvesoftware.Steam) ;;
+            esac
+        done
+        if [[ "${#FP_APPS[@]}" -gt 0 ]]; then
+            echo "==> Установка кросс-архитектурных Flatpak-приложений (Flathub): ${FP_APPS[*]}"
+            run flatpak install -y flathub "${FP_APPS[@]}" || true
+        fi
+    fi
 fi
 
 # 2. Post-setup & custom installers
