@@ -1,52 +1,79 @@
-# Material Design 3 Expressive Dotfiles (CachyOS + Niri)
+# Material Design 3 Expressive Dotfiles (Niri + Quickshell)
 
-Полная портативная сборка окружения **CachyOS + Niri** в стиле **Material Design 3 Expressive**:
-- Нативная оболочка **Quickshell** (навбар, единый док, Центр управления Android 16 PC, 10 попапов, 6-вкладочные настройки, нативные уведомления без `swaync`, виджет музыки с волной и синхронным текстом, виджет терминала).
-- **4 полных профиля** (`Ctrl + Alt + 1..4` или меню «Кастомизация»): **Фиолетовый**, **Синий**, **Зеленый** (светлый), **Оранжевый** — каждый со своими обоями, портретом в терминале, палитрой, иконками `Tela-circle-*`, темой AyuGram и экраном входа SDDM.
-- Плавные анимации **Niri** без бекджампа, умная навигация (`m3-nav-lr`), курсор `Bibata-Modern-Ice`, вариативный шрифт `Roboto Flex` + `Material Symbols Rounded`.
-- Адаптация **GTK3/4, Qt5/6, Kitty, Alacritty, Rofi, SwayOSD, Hyprlock, btop, Zen Browser, mpv/Celluloid, Loupe, gnome-text-editor** (с живой подсветкой M3) и **SDDM Qt6**.
-- Умная поддержка ноутбуков и ПК: яркость автоматически работает через `brightnessctl` на ноутбуке и через `ddcutil` (DDC/CI) на внешнем мониторе; `display.kdl` не затирает экран другого ПК.
+Универсальная портативная сборка **Niri + Quickshell** в стиле **Material Design 3 Expressive** — работает на **`x86_64`** (Intel/AMD) и **`ARM64 / aarch64`** (Apple Silicon Asahi, Snapdragon, ARM-ноутбуки), на дискретных и встроенных GPU (**NVIDIA, AMD, Intel, ARM SoC**).
+
+### Что внутри
+- **Оболочка Quickshell (100% без привязки к архитектуре):** навбар, единый док, Центр управления Android 16 PC, 10 попапов, 6-вкладочные настройки, нативные уведомления (`NotificationsOverlay.qml` вместо `swaync`), виджет музыки с волной и текстом, настольный терминал (автовыравнивание под любую ширину экрана).
+- **4 полных профиля (`Ctrl + Alt + 1..4`):** **Фиолетовый**, **Синий**, **Зеленый** (светлый), **Оранжевый** — обои, портрет терминала, палитра, иконки `Tela-circle-*`, тема AyuGram, подсветка `gnome-text-editor` и экран входа **SDDM Qt6**.
+- **Адаптация под железо:** яркость автоматически работает через `brightnessctl` на ноутбуке и `ddcutil` на внешнем мониторе; мониторинг GPU (`m3-sysmon-json`) поддерживает NVIDIA (`nvidia-smi`), AMD/Intel (`/sys/class/drm`) и ARM SoC; `display.kdl` не затирает настройки чужого экрана.
 
 ---
 
-## Развернуть на новом ПК / ноутбуке (CachyOS + Niri)
+## Команды развёртывания под разные системы и архитектуры
 
+### 1. CachyOS / Arch Linux (`x86_64` — ПК или ноутбук)
+Полная автоматическая установка одной командой (включая удаление Noctalia и интерактивный выбор приложений):
 ```bash
-git clone <URL_ТВОЕГО_РЕПОЗИТОРИЯ> ~/m3-dotfiles
+sudo pacman -S --needed github-cli
+gh auth login
+gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
 cd ~/m3-dotfiles
 ./install.sh
 ```
-
-Полезные флаги:
-- `./install.sh --gaming` — сразу поставить и игровой стек CachyOS (`proton-cachyos-slr`, `umu-launcher`, `gamemode`, `mangohud`, `gamescope`, `lib32-libpulse`, `game-devices-udev`).
-- По умолчанию `./install.sh` **сам удаляет Noctalia** (`cachyos-niri-noctalia`, `noctalia-shell`, `noctalia`, её конфиги и кэши) и отключает `swaync`. Если нужно оставить Noctalia, добавь флаг `--keep-noctalia`.
-- `./install.sh --profile blue` — сразу активировать нужный профиль (`violet` / `blue` / `forest` / `peach`).
-- `./install.sh --dry-run` — посмотреть план установки без изменений.
-
----
-
-## Как обновлять бэкап после новых правок на этом ПК
-
+Сразу с игровым стеком (`Proton-CachyOS`, `UMU`, `GameMode`, `MangoHud`, `Gamescope`):
 ```bash
-cd ~/m3-dotfiles
-./sync.sh
-git add -A
-git commit -m "Update M3 Expressive setup"
-git push
+./install.sh --gaming
 ```
 
-Личные данные, токены, куки, пароли, история чатов и SSH-ключи в репозиторий **не попадают**.
+### 2. Arch Linux ARM / Asahi Alarm (`aarch64` — ARM-ноутбук)
+```bash
+sudo pacman -S --needed git github-cli
+gh auth login
+gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+cd ~/m3-dotfiles
+./install.sh
+```
+*На `aarch64` установщик автоматически пропустит x86-only пакеты, поставит совместимые ARM-пакеты из `pacman`/`paru` и отфильтрует список приложений в `install-apps.sh` под ARM64. Если `niri`/`quickshell`/`matugen`/`awww` отсутствуют в репах ARM, доустанови их через `paru` или `cargo install matugen`.*
+
+### 3. Fedora / Fedora Asahi Remix (`x86_64` и `aarch64` — включая Apple Silicon M1/M2/M3)
+```bash
+sudo dnf install -y gh git
+sudo dnf copr enable -y yalter/niri
+sudo dnf copr enable -y errornointernet/quickshell
+gh auth login
+gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+cd ~/m3-dotfiles
+./install.sh
+```
+*Для `matugen` и `awww` на Fedora: `cargo install matugen` (или бинарник с GitHub Releases) и `sudo dnf install -y quickshell awww cliphist` (если подключён COPR).*
+
+### 4. Ubuntu / Debian (`x86_64` и `aarch64`)
+```bash
+sudo apt update && sudo apt install -y gh git
+gh auth login
+gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+cd ~/m3-dotfiles
+./install.sh
+```
+*Затем при необходимости поставь свежие `niri`, `quickshell`, `matugen`, `awww` и `cliphist` из GitHub Releases / `cargo` и выполни `~/.local/bin/m3-profile violet`.*
+
+### 5. Любой другой Linux (NixOS, Void, Gentoo, Alpine и т.д. — только конфиги и темы)
+Установи `niri`, `quickshell`, `matugen`, `awww`, `kitty`, `rofi`, `fastfetch`, `fish`, `grim`, `slurp`, `wl-clipboard`, `cliphist`, `brightnessctl` средствами своего дистрибутива, а затем разверни конфиги без трогания пакетного менеджера:
+```bash
+./install.sh --no-packages --no-apps
+```
 
 ---
 
 ## Интерактивная установка приложений (`apps.json` / `install-apps.sh`)
+В конце `./install.sh` откроется меню с чекбоксами (`↑/↓`, `Пробел`, `A` все, `N` снять, `Enter` старт). На ARM64 автоматически скрываются x86-only пакеты (`Steam`, `Proton`, `Hydra`, `Termius`, `KeqDroid`).
 
-В конце `./install.sh` установщик спросит: **«Хотите установить ваши приложения?»** и откроет интерактивное меню с чекбоксами (`↑/↓` выбор, `Пробел` отметить, `A` выбрать все, `N` снять все, `Enter` начать установку).
-
-Список вынесен в `apps.json` (12 приложений):
-`Zen Browser`, `AyuGram Desktop`, `VSCodium`, `Vesktop`, `Pear Desktop`, `Steam`, `Игровой стек CachyOS`, `Hydra Launcher`, `Nuvio`, `Termius`, `KeqDroid`, `waifu2x-ncnn-vulkan`.
-
-Можно также запускать выбор приложений отдельно в любой момент:
+Отдельный запуск в любой момент:
 ```bash
 ./install-apps.sh
+```
+
+## Как обновлять бэкап после новых правок
+```bash
+cd ~/m3-dotfiles && ./sync.sh && git add -A && git commit -m "Update M3 setup" && git push
 ```

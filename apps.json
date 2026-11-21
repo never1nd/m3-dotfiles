@@ -7,7 +7,11 @@
     "packages": [
       "zen-browser-bin"
     ],
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   },
   {
     "id": "ayugram",
@@ -18,7 +22,11 @@
       "ayugram-desktop"
     ],
     "post": "ayugram_wrapper",
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   },
   {
     "id": "vscodium",
@@ -28,7 +36,11 @@
     "packages": [
       "vscodium"
     ],
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   },
   {
     "id": "vesktop",
@@ -38,7 +50,11 @@
     "packages": [
       "vesktop-bin"
     ],
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   },
   {
     "id": "pear-desktop",
@@ -48,7 +64,11 @@
     "packages": [
       "pear-desktop"
     ],
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   },
   {
     "id": "steam",
@@ -58,7 +78,10 @@
     "packages": [
       "steam"
     ],
-    "default": true
+    "default": true,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "gaming-stack",
@@ -66,7 +89,10 @@
     "desc": "Proton-CachyOS, UMU, GameMode, MangoHud, Gamescope, 32-bit звук",
     "method": "custom",
     "post": "gaming_stack",
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "hydralauncher",
@@ -74,7 +100,10 @@
     "desc": "Игровой лаунчер (AppImage, свежий релиз GitHub)",
     "method": "custom",
     "post": "hydralauncher",
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "nuvio",
@@ -82,7 +111,10 @@
     "desc": "Медиа-стриминг (AppImage, свежий релиз GitHub)",
     "method": "custom",
     "post": "nuvio",
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "termius",
@@ -90,7 +122,10 @@
     "desc": "SSH-клиент (официальный .deb -> /opt/Termius)",
     "method": "custom",
     "post": "termius",
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "keqdroid",
@@ -98,7 +133,10 @@
     "desc": "VPN-клиент (AUR keqdroid-bin)",
     "method": "custom",
     "post": "keqdroid",
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64"
+    ]
   },
   {
     "id": "waifu2x",
@@ -108,6 +146,10 @@
     "packages": [
       "waifu2x-ncnn-vulkan"
     ],
-    "default": false
+    "default": false,
+    "arch": [
+      "x86_64",
+      "aarch64"
+    ]
   }
 ]

@@ -47,7 +47,12 @@ fi
 SELECTED="$(python3 - "$APPS_JSON" "$MODE" "$LIST_IDS" <<'PYEOF'
 import json, sys, os
 
-apps = json.load(open(sys.argv[1], encoding="utf-8"))
+import platform
+arch = os.environ.get("M3_FORCE_ARCH") or platform.machine()
+if arch == "arm64":
+    arch = "aarch64"
+raw_apps = json.load(open(sys.argv[1], encoding="utf-8"))
+apps = [a for a in raw_apps if arch in a.get("arch", ["x86_64"])]
 mode = sys.argv[2]
 list_ids = [x.strip() for x in sys.argv[3].split(",") if x.strip()]
 

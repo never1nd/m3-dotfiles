@@ -135,6 +135,7 @@ def get_top_ram_apps(total_mb: float, limit: int = 7):
     return res
 
 def get_gpu():
+    # 1) NVIDIA (nvidia-smi)
     try:
         out = subprocess.check_output(
             [
@@ -144,24 +145,67 @@ def get_gpu():
             ],
             text=True,
             timeout=1.5,
-        ).strip().splitlines()[0]
-        parts = [p.strip() for p in out.split(",")]
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        parts = [p.strip() for p in out.splitlines()[0].split(",")]
         name = parts[0].replace("NVIDIA GeForce ", "")
-        util = round(float(parts[1]))
-        temp = round(float(parts[2]))
-        vused = round(float(parts[3]) / 1024.0, 1)
-        vtotal = round(float(parts[4]) / 1024.0, 1)
-        vpct = round(100.0 * float(parts[3]) / max(1.0, float(parts[4])))
+        util = int(float(parts[1]))
+        temp = int(float(parts[2]))
+        vram_used = float(parts[3]) / 1024.0
+        vram_tot = float(parts[4]) / 1024.0
         return {
             "name": name,
             "pct": util,
             "temp": temp,
-            "vram_used_gb": vused,
-            "vram_total_gb": vtotal,
-            "vram_pct": vpct,
+            "vram_used_gb": round(vram_used, 2),
+            "vram_total_gb": round(vram_tot, 1),
+            "vram_pct": int(round(100.0 * vram_used / max(vram_tot, 0.1))),
         }
     except Exception:
-        return {"name": "GPU", "pct": 0, "temp": 0, "vram_used_gb": 0.0, "vram_total_gb": 0.0, "vram_pct": 0}
+        pass
+
+    # 2) AMD / Intel / ARM integrated GPU via Linux DRM sysfs (/sys/class/drm/card*)
+    try:
+        drm = pathlib.Path("/sys/class/drm")
+        for card in sorted(drm.glob("card[0-9]")):
+            dev = card / "device"
+            if not dev.exists():
+                continue
+            busy_p = dev / "gpu_busy_percent"
+            vram_u_p = dev / "mem_info_vram_used"
+            vram_t_p = dev / "mem_info_vram_total"
+            # Read GPU temperature from card's hwmon if available
+            temp = 0
+            for tfile in sorted((dev / "hwmon").glob("hwmon*/temp1_input")) if (dev / "hwmon").exists() else []:
+                try:
+                    temp = int(int(tfile.read_text().strip()) / 1000)
+                    break
+                except Exception:
+                    pass
+            pct = int(busy_p.read_text().strip()) if busy_p.exists() else 0
+            vram_used = int(vram_u_p.read_text().strip()) / (1024 ** 3) if vram_u_p.exists() else 0.0
+            vram_tot = int(vram_t_p.read_text().strip()) / (1024 ** 3) if vram_t_p.exists() else 0.0
+            vendor = (dev / "vendor").read_text().strip().lower() if (dev / "vendor").exists() else ""
+            if vendor == "0x1002":
+                gname = "AMD Radeon"
+            elif vendor == "0x8086":
+                gname = "Intel Graphics"
+            else:
+                dt_model = pathlib.Path("/proc/device-tree/model")
+                gname = dt_model.read_text(errors="ignore").strip("\x00\n ")[:22] if dt_model.exists() else "Integrated GPU"
+            if busy_p.exists() or temp > 0 or vendor in ("0x1002", "0x8086"):
+                return {
+                    "name": gname,
+                    "pct": pct,
+                    "temp": temp,
+                    "vram_used_gb": round(vram_used, 2),
+                    "vram_total_gb": round(vram_tot, 1),
+                    "vram_pct": int(round(100.0 * vram_used / max(vram_tot, 0.1))) if vram_tot > 0 else 0,
+                }
+    except Exception:
+        pass
+
+    return {"name": "GPU", "pct": 0, "temp": 0, "vram_used_gb": 0.0, "vram_total_gb": 0.0, "vram_pct": 0}
 
 ram = get_ram()
 print(json.dumps({
