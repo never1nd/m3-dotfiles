@@ -14,9 +14,7 @@
 ### 1. CachyOS / Arch Linux (`x86_64` — ПК или ноутбук)
 Полная автоматическая установка одной командой (включая удаление Noctalia и интерактивный выбор приложений):
 ```bash
-sudo pacman -S --needed github-cli
-gh auth login
-gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+git clone https://github.com/never1nd/m3-dotfiles.git ~/m3-dotfiles
 cd ~/m3-dotfiles
 ./install.sh
 ```
@@ -27,9 +25,8 @@ cd ~/m3-dotfiles
 
 ### 2. Arch Linux ARM / Asahi Alarm (`aarch64` — ARM-ноутбук)
 ```bash
-sudo pacman -S --needed git github-cli
-gh auth login
-gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+sudo pacman -S --needed git
+git clone https://github.com/never1nd/m3-dotfiles.git ~/m3-dotfiles
 cd ~/m3-dotfiles
 ./install.sh
 ```
@@ -37,11 +34,10 @@ cd ~/m3-dotfiles
 
 ### 3. Fedora / Fedora Asahi Remix (`x86_64` и `aarch64` — включая Apple Silicon M1/M2/M3)
 ```bash
-sudo dnf install -y gh git
+sudo dnf install -y git
 sudo dnf copr enable -y yalter/niri
 sudo dnf copr enable -y errornointernet/quickshell
-gh auth login
-gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+git clone https://github.com/never1nd/m3-dotfiles.git ~/m3-dotfiles
 cd ~/m3-dotfiles
 ./install.sh
 ```
@@ -49,9 +45,8 @@ cd ~/m3-dotfiles
 
 ### 4. Ubuntu / Debian (`x86_64` и `aarch64`)
 ```bash
-sudo apt update && sudo apt install -y gh git
-gh auth login
-gh repo clone never1nd/m3-dotfiles ~/m3-dotfiles
+sudo apt update && sudo apt install -y git
+git clone https://github.com/never1nd/m3-dotfiles.git ~/m3-dotfiles
 cd ~/m3-dotfiles
 ./install.sh
 ```
