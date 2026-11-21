@@ -54,7 +54,7 @@ PanelWindow {
     }
     Timer {
         id: pauseDebounceTimer
-        interval: 240
+        interval: 700
         repeat: false
         onTriggered: if (!musicWin.skipBuffering) musicWin.isActuallyPlaying = musicWin.rawPlaying
     }
@@ -169,7 +169,7 @@ PanelWindow {
     function syncTrackCache() {
         if (!activePlayer) return
         const t = activePlayer.trackTitle || ""
-        const a = activePlayer.trackArtist || activePlayer.identity || ""
+        const a = activePlayer.trackArtist || ""
         const alb = activePlayer.trackAlbum || ""
         const art = activePlayer.trackArtUrl || ""
         if (t === "") return
@@ -213,10 +213,12 @@ PanelWindow {
         }
     }
 
-    // Hidden async 256x256 preloader so the new cover is 100% decoded BEFORE sliding in!
+    // Invisible (opacity:0, 1x1) async preloader — visible:true is REQUIRED in Qt6 so Image actually decodes!
     Image {
         id: artPreloader
-        visible: false
+        width: 1
+        height: 1
+        opacity: 0.0
         source: musicWin.pendingArtUrl
         asynchronous: true
         sourceSize.width: 256
@@ -681,7 +683,7 @@ PanelWindow {
                                 id: coverArt
                                 anchors.fill: parent
                                 source: musicWin.displayedArtUrl
-                                asynchronous: true
+                                asynchronous: false
                                 sourceSize.width: 256
                                 sourceSize.height: 256
                                 cache: true

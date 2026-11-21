@@ -52,13 +52,11 @@ Item {
 
     function syncFromPlayer(force) {
         if (!player || dragging || holdAtZero) return
-        // Never let spurious MPRIS position spikes jump the handle while paused!
         if (!force && !isPlaying) return
+        if (!force && Date.now() < resetShieldUntilMs) return
         const p = player.position
         if (typeof p === "number" && !isNaN(p) && p >= 0) {
-            if (hasKnownLength && p > trackLen + 2.0) return
-            // For 1.2s after a track switch, ignore stale old-track position packets (> 3s)!
-            if (Date.now() < resetShieldUntilMs && p > 3.0) return
+            if (hasKnownLength && p > trackLen + 1.0) return
             if (force || Math.abs(p - currentPos) > 1.8) {
                 setAnchor(p)
             }
@@ -90,13 +88,10 @@ Item {
 
     readonly property real progress: {
         if (dragging) return dragRatio
+        if (holdAtZero) return 0.0
         if (hasKnownLength) return Math.max(0.0, Math.min(1.0, currentPos / trackLen))
-        // Graceful visual progress when player omits mpris:length (e.g. Telegram audio)
-        if (currentPos > 0) {
-            // Smooth visual sweep across 4-minute reference or steady 0.58 fill
-            return Math.max(0.18, Math.min(0.88, (currentPos % 240) / 240))
-        }
-        return isPlaying ? 0.45 : 0.25
+        // When length is temporarily 0 during Chromium/YouTube track switch, stay cleanly at 0.0 (never jump to 45%!)
+        return 0.0
     }
 
     // Smooth wave amplitude: wavy when playing -> calm straight line (0px) when paused (zero overshoot!)
