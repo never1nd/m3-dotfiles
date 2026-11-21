@@ -36,36 +36,38 @@ PanelWindow {
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
     readonly property bool hasMusicService: activePlayer !== null
 
-    // Cached track metadata prevents blank flashes during brief track-switch gaps
-    property string cachedTitle: ""
-    property string cachedArtist: ""
-    property string cachedAlbum: ""
-    property string prevArtUrl: ""
-    property string currentArtUrl: ""
-    property real metaLiftY: 0
-    property real metaOpacity: 1.0
+    // Displayed vs Pending track state for true 2-phase Material 3 Shared Axis X animation!
+    property string displayedTitle: ""
+    property string displayedArtist: ""
+    property string displayedAlbum: ""
+    property string displayedArtUrl: ""
+
+    property string pendingTitle: ""
+    property string pendingArtist: ""
+    property string pendingAlbum: ""
+    property string pendingArtUrl: ""
+
+    property int skipDir: 1   // +1 = next (slides left->in from right), -1 = prev (slides right->in from left)
+    property real stageX: 0
+    property real stageScale: 1.0
+    property real stageOpacity: 1.0
+
     property real lyricsOpacity: 1.0
     property real lyricsLiftY: 0
     property bool lyricsFetchedOnce: false
 
-    function triggerMetaTransition() {
-        metaSwitchAnim.stop()
-        metaLiftY = 10
-        metaOpacity = 0.0
-        metaSwitchAnim.start()
-    }
-
     function triggerLyricsReveal() {
         lyricsRevealAnim.stop()
-        lyricsLiftY = 12
+        lyricsLiftY = 14
         lyricsOpacity = 0.0
         lyricsRevealAnim.start()
     }
 
-    function updateCoverUrl(newUrl) {
-        if (!newUrl || newUrl === "" || newUrl === currentArtUrl) return
-        if (currentArtUrl !== "") prevArtUrl = currentArtUrl
-        currentArtUrl = newUrl
+    function applyPendingTrack() {
+        if (pendingTitle !== "") displayedTitle = pendingTitle
+        if (pendingArtist !== "") displayedArtist = pendingArtist
+        displayedAlbum = pendingAlbum
+        if (pendingArtUrl !== "") displayedArtUrl = pendingArtUrl
     }
 
     function syncTrackCache() {
@@ -74,27 +76,100 @@ PanelWindow {
         const a = activePlayer.trackArtist || activePlayer.identity || ""
         const alb = activePlayer.trackAlbum || ""
         const art = activePlayer.trackArtUrl || ""
-        if (t !== "") {
-            const changed = (cachedTitle !== "" && t !== cachedTitle)
-            cachedTitle = t
-            cachedArtist = a
-            cachedAlbum = alb
-            if (art !== "") updateCoverUrl(art)
-            if (changed) triggerMetaTransition()
+        if (t === "") return
+
+        // First track on startup: populate immediately without exit slide
+        if (displayedTitle === "") {
+            displayedTitle = t
+            displayedArtist = a
+            displayedAlbum = alb
+            displayedArtUrl = art
+            pendingTitle = t
+            pendingArtist = a
+            pendingAlbum = alb
+            pendingArtUrl = art
             fetchLyricsForCurrent()
+            return
         }
+
+        // Same track — just keep album art/artist updated if they arrived slightly after title
+        if (t === pendingTitle) {
+            if (a !== "") { pendingArtist = a; if (!trackSwapAnim.running) displayedArtist = a }
+            if (alb !== "") { pendingAlbum = alb; if (!trackSwapAnim.running) displayedAlbum = alb }
+            if (art !== "") { pendingArtUrl = art; if (!trackSwapAnim.running) displayedArtUrl = art }
+            fetchLyricsForCurrent()
+            return
+        }
+
+        // New track! Queue pending metadata and run smooth 2-phase M3 Shared Axis X exit -> swap -> enter!
+        pendingTitle = t
+        pendingArtist = a
+        pendingAlbum = alb
+        pendingArtUrl = art
+        fetchLyricsForCurrent()
+        trackSwapAnim.restart()
     }
 
-    ParallelAnimation {
-        id: metaSwitchAnim
-        NumberAnimation { target: musicWin; property: "metaLiftY"; to: 0; duration: 300; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "metaOpacity"; to: 1.0; duration: 260; easing.type: Easing.OutCubic }
+    // Two-phase Material Design 3 Expressive Shared Axis X Track Transition (zero abrupt cut, zero backjump!)
+    SequentialAnimation {
+        id: trackSwapAnim
+
+        // Phase 1: Old track glides smoothly out in skip direction
+        ParallelAnimation {
+            NumberAnimation {
+                target: musicWin; property: "stageX"
+                to: -musicWin.skipDir * 44
+                duration: 150; easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: musicWin; property: "stageScale"
+                to: 0.90
+                duration: 150; easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: musicWin; property: "stageOpacity"
+                to: 0.0
+                duration: 135; easing.type: Easing.InCubic
+            }
+        }
+
+        // Midpoint swap while invisible + position on incoming edge
+        ScriptAction {
+            script: {
+                musicWin.applyPendingTrack()
+                musicWin.stageX = musicWin.skipDir * 48
+                musicWin.stageScale = 0.90
+                musicWin.stageOpacity = 0.0
+            }
+        }
+
+        // Phase 2: New track glides smoothly in (M3 Emphasized Decelerate, zero overshoot)
+        ParallelAnimation {
+            NumberAnimation {
+                target: musicWin; property: "stageX"
+                to: 0
+                duration: 340; easing.type: Easing.OutQuint
+            }
+            NumberAnimation {
+                target: musicWin; property: "stageScale"
+                to: 1.0
+                duration: 340; easing.type: Easing.OutQuint
+            }
+            NumberAnimation {
+                target: musicWin; property: "stageOpacity"
+                to: 1.0
+                duration: 280; easing.type: Easing.OutCubic
+            }
+        }
+
+        // Reset direction to forward (+1) for natural auto-advance
+        ScriptAction { script: musicWin.skipDir = 1 }
     }
 
     ParallelAnimation {
         id: lyricsRevealAnim
-        NumberAnimation { target: musicWin; property: "lyricsLiftY"; to: 0; duration: 340; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "lyricsOpacity"; to: 1.0; duration: 300; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "lyricsLiftY"; to: 0; duration: 360; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "lyricsOpacity"; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
     }
 
     property bool animShown: false
@@ -203,7 +278,9 @@ PanelWindow {
         }
         function onTrackArtUrlChanged() {
             if (musicWin.activePlayer && (musicWin.activePlayer.trackArtUrl || "") !== "") {
-                musicWin.updateCoverUrl(musicWin.activePlayer.trackArtUrl)
+                const art = musicWin.activePlayer.trackArtUrl
+                musicWin.pendingArtUrl = art
+                if (!trackSwapAnim.running) musicWin.displayedArtUrl = art
             }
         }
         function onPositionChanged() {
@@ -410,99 +487,77 @@ PanelWindow {
                     }
                 }
 
-                // Hero Album Cover Art (210x210, ExtraLarge 24px!) — true dual-layer crossfade (zero blank pop-in!)
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    width: 210
-                    height: 210
-                    radius: 24
-                    color: Theme.alpha(Theme.primaryContainer, 0.55)
-                    border.width: 1
-                    border.color: Theme.alpha(Theme.primary, 0.28)
+                // Clipped M3 Expressive Shared Axis X Stage (Album Art + Track Title + Artist glide together!)
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 264
                     clip: true
 
-                    // Previous cover holds steady underneath until the new cover finishes loading!
-                    Image {
-                        id: coverBack
+                    ColumnLayout {
                         anchors.fill: parent
-                        source: musicWin.prevArtUrl
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        visible: status === Image.Ready
-                    }
+                        spacing: 12
 
-                    Image {
-                        id: coverFront
-                        anchors.fill: parent
-                        source: musicWin.currentArtUrl
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        opacity: 0.0
-                        scale: 0.96
+                        // Hero Album Cover Art (210x210, ExtraLarge 24px)
+                        Rectangle {
+                            Layout.alignment: Qt.AlignHCenter
+                            width: 210
+                            height: 210
+                            radius: 24
+                            color: Theme.alpha(Theme.primaryContainer, 0.55)
+                            border.width: 1
+                            border.color: Theme.alpha(Theme.primary, 0.28)
+                            clip: true
+                            opacity: musicWin.stageOpacity
+                            scale: musicWin.stageScale
+                            transform: Translate { x: musicWin.stageX }
 
-                        onSourceChanged: {
-                            if (status === Image.Ready) {
-                                coverFadeAnim.restart()
-                            } else {
-                                opacity = 0.0
-                                scale = 0.96
+                            Image {
+                                id: coverArt
+                                anchors.fill: parent
+                                source: musicWin.displayedArtUrl
+                                fillMode: Image.PreserveAspectCrop
+                                smooth: true
+                                mipmap: true
+                                visible: status === Image.Ready
+                            }
+
+                            M3Icon {
+                                anchors.centerIn: parent
+                                visible: !coverArt.visible
+                                name: "album"
+                                size: 72
+                                filled: true
+                                color: Theme.fgPrimaryContainer
                             }
                         }
-                        onStatusChanged: {
-                            if (status === Image.Ready) {
-                                coverFadeAnim.restart()
+
+                        // Track Title + Artist (subtle parallax follow with cover)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            opacity: musicWin.stageOpacity
+                            transform: Translate { x: musicWin.stageX * 1.25 }
+
+                            M3Text {
+                                role: "headline"
+                                customSize: 17
+                                text: musicWin.displayedTitle !== "" ? musicWin.displayedTitle : (musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "Ожидание трека") : "")
+                                color: Theme.fgSurface
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            M3Text {
+                                role: "label"
+                                customSize: 12
+                                text: musicWin.displayedArtist !== "" ? musicWin.displayedArtist : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : "")
+                                color: Theme.primary
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
                             }
                         }
-
-                        ParallelAnimation {
-                            id: coverFadeAnim
-                            NumberAnimation { target: coverFront; property: "opacity"; from: 0.0; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
-                            NumberAnimation { target: coverFront; property: "scale"; from: 0.96; to: 1.0; duration: 340; easing.type: Easing.OutQuint }
-                            onFinished: {
-                                if (musicWin.currentArtUrl !== "") {
-                                    musicWin.prevArtUrl = musicWin.currentArtUrl
-                                }
-                            }
-                        }
-                    }
-
-                    M3Icon {
-                        anchors.centerIn: parent
-                        visible: !coverBack.visible && coverFront.status !== Image.Ready
-                        name: "album"
-                        size: 72
-                        filled: true
-                        color: Theme.fgPrimaryContainer
-                    }
-                }
-
-                // Track Title + Artist — unified calm M3 Expressive vertical lift
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    opacity: musicWin.metaOpacity
-                    transform: Translate { y: musicWin.metaLiftY }
-
-                    M3Text {
-                        role: "headline"
-                        customSize: 17
-                        text: musicWin.cachedTitle !== "" ? musicWin.cachedTitle : (musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "Ожидание трека") : "")
-                        color: Theme.fgSurface
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-
-                    M3Text {
-                        role: "label"
-                        customSize: 12
-                        text: musicWin.cachedArtist !== "" ? musicWin.cachedArtist : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : "")
-                        color: Theme.primary
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
 
@@ -544,7 +599,10 @@ PanelWindow {
                         iconName: "skip_previous"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                        onTriggered: {
+                            musicWin.skipDir = -1
+                            if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                        }
                     }
 
                     // Hero M3 Expressive Morphing Play/Pause Button (Equal 76x76: Squircle Playing <-> Perfect Circle Paused!)
@@ -604,7 +662,10 @@ PanelWindow {
                         iconName: "skip_next"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.next()
+                        onTriggered: {
+                            musicWin.skipDir = 1
+                            if (musicWin.activePlayer) musicWin.activePlayer.next()
+                        }
                     }
 
                     DeskMediaBtn {
