@@ -41,20 +41,22 @@ Item {
         if (!player || dragging) return
         const p = player.position
         if (typeof p === "number" && !isNaN(p) && p >= 0) {
-            // Only resync on genuine seek / track change (>1.8s drift), never jitter backwards on stale 1s ticks!
-            if (force || Math.abs(p - currentPos) > 1.8) {
+            if (force || Math.abs(p - currentPos) > 1.5) {
                 setAnchor(p)
             }
         }
     }
 
+    // Refresh initial position once on mount / player attach / real track switch / real D-Bus seek ONLY!
+    Component.onCompleted: syncFromPlayer(true)
     onPlayerChanged: syncFromPlayer(true)
     onIsPlayingChanged: {
         if (isPlaying) {
+            // Resume smoothly from exact paused position (no backwards snap!)
             anchorPos = currentPos
             anchorMs = Date.now()
-            syncFromPlayer(false)
         } else {
+            // Freeze cleanly at exact current position
             anchorPos = currentPos
         }
     }
@@ -62,22 +64,8 @@ Item {
     Connections {
         target: scrubber.player
         function onPositionChanged() { scrubber.syncFromPlayer(false) }
-        function onTrackTitleChanged() {
-            scrubber.setAnchor(0)
-            scrubber.syncFromPlayer(true)
-        }
-        function onPostTrackChanged() {
-            scrubber.setAnchor(0)
-            scrubber.syncFromPlayer(true)
-        }
-    }
-
-    // Gentle drift-check every 2s (only resyncs on real seek >1.8s, never snaps handle backwards!)
-    Timer {
-        interval: 2000
-        running: scrubber.visible && scrubber.player !== null && scrubber.isPlaying && !scrubber.dragging
-        repeat: true
-        onTriggered: scrubber.syncFromPlayer(false)
+        function onTrackTitleChanged() { scrubber.setAnchor(0) }
+        function onPostTrackChanged() { scrubber.setAnchor(0) }
     }
 
     readonly property real progress: {

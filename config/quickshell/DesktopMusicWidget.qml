@@ -36,15 +36,15 @@ PanelWindow {
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
     readonly property bool hasMusicService: activePlayer !== null
 
-    // Silky 2-slot preloaded crossfade cover + calm vertical text reveal (zero empty placeholder flash!)
+    // Rock-solid silky cover crossfade + M3 Expressive vertical text reveal (zero races!)
     property string displayedTitle: ""
     property string displayedArtist: ""
     property string displayedAlbum: ""
-    property string coverUrlA: ""
-    property string coverUrlB: ""
-    property int activeCoverSlot: 0   // 0 -> coverA visible, 1 -> coverB visible
-    property string latestRequestedArt: ""
+    property string prevArtUrl: ""
+    property string curArtUrl: ""
 
+    property real coverFadeOpacity: 1.0
+    property real coverFadeScale: 1.0
     property real textLiftY: 0
     property real textOpacity: 1.0
     property real lyricsOpacity: 1.0
@@ -59,24 +59,26 @@ PanelWindow {
     }
 
     function loadCoverSmooth(url) {
-        if (!url || url === "" || url === latestRequestedArt) return
-        latestRequestedArt = url
-        if (coverUrlA === "" && coverUrlB === "") {
-            coverUrlA = url
-            activeCoverSlot = 0
+        if (!url || url === "" || url === curArtUrl) return
+        if (curArtUrl === "") {
+            curArtUrl = url
+            prevArtUrl = url
+            coverFadeOpacity = 1.0
+            coverFadeScale = 1.0
             return
         }
-        // Load into the hidden inactive slot; slot flips smoothly ONLY when Image.Ready!
-        if (activeCoverSlot === 0) {
-            coverUrlB = url
-        } else {
-            coverUrlA = url
-        }
+        prevArtUrl = curArtUrl
+        curArtUrl = url
+        coverCrossfadeAnim.restart()
     }
 
     readonly property string liveTrackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
+    readonly property string liveArtUrl: activePlayer ? (activePlayer.trackArtUrl || "") : ""
     onLiveTrackTitleChanged: {
         if (liveTrackTitle !== "") syncTrackCache()
+    }
+    onLiveArtUrlChanged: {
+        if (liveArtUrl !== "") loadCoverSmooth(liveArtUrl)
     }
 
     function syncTrackCache() {
@@ -112,9 +114,16 @@ PanelWindow {
     }
 
     ParallelAnimation {
+        id: coverCrossfadeAnim
+        NumberAnimation { target: musicWin; property: "coverFadeOpacity"; from: 0.0; to: 1.0; duration: 380; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "coverFadeScale"; from: 0.93; to: 1.0; duration: 400; easing.type: Easing.OutQuint }
+        onFinished: musicWin.prevArtUrl = musicWin.curArtUrl
+    }
+
+    ParallelAnimation {
         id: textRevealAnim
-        NumberAnimation { target: musicWin; property: "textLiftY"; from: 10; to: 0; duration: 300; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "textOpacity"; from: 0.0; to: 1.0; duration: 260; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "textLiftY"; from: 14; to: 0; duration: 360; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "textOpacity"; from: 0.0; to: 1.0; duration: 300; easing.type: Easing.OutCubic }
     }
 
     ParallelAnimation {
@@ -470,51 +479,33 @@ PanelWindow {
                             border.color: Theme.alpha(Theme.primary, 0.28)
                             clip: true
 
-                            // Slot A
+                            // Previous cover stays rock-solid underneath while new cover crossfades cleanly on top!
                             Image {
-                                id: coverA
+                                id: coverPrev
                                 anchors.fill: parent
-                                source: musicWin.coverUrlA
-                                asynchronous: true
+                                source: musicWin.prevArtUrl
+                                cache: true
                                 fillMode: Image.PreserveAspectCrop
                                 smooth: true
                                 mipmap: true
-                                opacity: (musicWin.activeCoverSlot === 0 && status === Image.Ready) ? 1.0 : 0.0
-                                scale: musicWin.activeCoverSlot === 0 ? 1.0 : 1.05
-                                z: musicWin.activeCoverSlot === 0 ? 2 : 1
-                                Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
-                                Behavior on scale { NumberAnimation { duration: 380; easing.type: Easing.OutQuint } }
-                                onStatusChanged: {
-                                    if (status === Image.Ready && source.toString() === musicWin.latestRequestedArt) {
-                                        musicWin.activeCoverSlot = 0
-                                    }
-                                }
+                                visible: status === Image.Ready
                             }
 
-                            // Slot B
                             Image {
-                                id: coverB
+                                id: coverCur
                                 anchors.fill: parent
-                                source: musicWin.coverUrlB
-                                asynchronous: true
+                                source: musicWin.curArtUrl
+                                cache: true
                                 fillMode: Image.PreserveAspectCrop
                                 smooth: true
                                 mipmap: true
-                                opacity: (musicWin.activeCoverSlot === 1 && status === Image.Ready) ? 1.0 : 0.0
-                                scale: musicWin.activeCoverSlot === 1 ? 1.0 : 1.05
-                                z: musicWin.activeCoverSlot === 1 ? 2 : 1
-                                Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
-                                Behavior on scale { NumberAnimation { duration: 380; easing.type: Easing.OutQuint } }
-                                onStatusChanged: {
-                                    if (status === Image.Ready && source.toString() === musicWin.latestRequestedArt) {
-                                        musicWin.activeCoverSlot = 1
-                                    }
-                                }
+                                opacity: status === Image.Ready ? musicWin.coverFadeOpacity : 0.0
+                                scale: musicWin.coverFadeScale
                             }
 
                             M3Icon {
                                 anchors.centerIn: parent
-                                visible: coverA.status !== Image.Ready && coverB.status !== Image.Ready
+                                visible: coverPrev.status !== Image.Ready && coverCur.status !== Image.Ready
                                 name: "album"
                                 size: 72
                                 filled: true
