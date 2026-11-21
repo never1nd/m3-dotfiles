@@ -23,44 +23,61 @@ Item {
     readonly property double trackLen: (player && player.length > 0) ? player.length : 0
     readonly property bool hasKnownLength: trackLen > 0.5
 
-    // Local smooth position tracker (synced with MPRIS position)
+    // Smooth monotonic wall-clock position tracker (immune to Chromium/Electron 1s MPRIS jitter!)
+    property double anchorPos: 0
+    property double anchorMs: Date.now()
     property double currentPos: 0
     property bool dragging: false
     property real dragRatio: 0
 
-    function syncFromPlayer() {
+    function setAnchor(sec) {
+        const clamped = hasKnownLength ? Math.max(0, Math.min(trackLen, sec)) : Math.max(0, sec)
+        anchorPos = clamped
+        anchorMs = Date.now()
+        currentPos = clamped
+    }
+
+    function syncFromPlayer(force) {
         if (!player || dragging) return
         const p = player.position
         if (typeof p === "number" && !isNaN(p) && p >= 0) {
-            currentPos = p
+            // Only resync on genuine seek / track change (>1.8s drift), never jitter backwards on stale 1s ticks!
+            if (force || Math.abs(p - currentPos) > 1.8) {
+                setAnchor(p)
+            }
         }
     }
 
-    onPlayerChanged: syncFromPlayer()
+    onPlayerChanged: syncFromPlayer(true)
+    onIsPlayingChanged: {
+        if (isPlaying) {
+            anchorPos = currentPos
+            anchorMs = Date.now()
+            syncFromPlayer(false)
+        } else {
+            anchorPos = currentPos
+        }
+    }
 
     Connections {
         target: scrubber.player
-        function onPositionChanged() { scrubber.syncFromPlayer() }
+        function onPositionChanged() { scrubber.syncFromPlayer(false) }
         function onTrackTitleChanged() {
-            scrubber.currentPos = 0
-            scrubber.syncFromPlayer()
+            scrubber.setAnchor(0)
+            scrubber.syncFromPlayer(true)
+        }
+        function onPostTrackChanged() {
+            scrubber.setAnchor(0)
+            scrubber.syncFromPlayer(true)
         }
     }
 
-    // Poll MPRIS position cleanly while visible & playing
+    // Gentle drift-check every 2s (only resyncs on real seek >1.8s, never snaps handle backwards!)
     Timer {
-        interval: 500
+        interval: 2000
         running: scrubber.visible && scrubber.player !== null && scrubber.isPlaying && !scrubber.dragging
         repeat: true
-        onTriggered: {
-            if (!scrubber.player) return
-            scrubber.player.positionChanged()
-            if (scrubber.hasKnownLength) {
-                scrubber.currentPos = Math.min(scrubber.trackLen, scrubber.currentPos + 0.5)
-            } else {
-                scrubber.currentPos = scrubber.currentPos + 0.5
-            }
-        }
+        onTriggered: scrubber.syncFromPlayer(false)
     }
 
     readonly property real progress: {
@@ -74,10 +91,10 @@ Item {
         return isPlaying ? 0.45 : 0.25
     }
 
-    // Smooth wave amplitude: wavy (3.2px) when playing -> flat straight line (0px) when paused!
+    // Smooth wave amplitude: wavy when playing -> calm straight line (0px) when paused (zero overshoot!)
     property real waveAmp: isPlaying ? maxWaveAmp : 0.0
     Behavior on waveAmp {
-        SpringAnimation { spring: 4.5; damping: 0.42; epsilon: 0.02 }
+        NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
     }
 
     property real wavePhase: 0.0
@@ -86,6 +103,11 @@ Item {
         running: scrubber.visible && scrubber.activeAnimation && (scrubber.isPlaying || scrubber.waveAmp > 0.05)
         repeat: true
         onTriggered: {
+            if (scrubber.isPlaying && !scrubber.dragging) {
+                const elapsed = Math.max(0, (Date.now() - scrubber.anchorMs) / 1000.0)
+                const nextPos = scrubber.anchorPos + elapsed
+                scrubber.currentPos = scrubber.hasKnownLength ? Math.min(scrubber.trackLen, nextPos) : nextPos
+            }
             scrubber.wavePhase = (scrubber.wavePhase + 0.11) % (Math.PI * 2)
             waveCanvas.requestPaint()
         }
@@ -224,13 +246,12 @@ Item {
                 const r = ratioAt(mouse.x)
                 if (scrubber.hasKnownLength) {
                     const targetSec = r * scrubber.trackLen
-                    scrubber.currentPos = targetSec
+                    scrubber.setAnchor(targetSec)
                     scrubber.player.position = targetSec
                 } else {
-                    // Relative seek fallback for players without mpris:length
                     const delta = (r - scrubber.progress) * 60.0
                     scrubber.player.seek(delta)
-                    scrubber.currentPos = Math.max(0, scrubber.currentPos + delta)
+                    scrubber.setAnchor(Math.max(0, scrubber.currentPos + delta))
                 }
                 scrubber.dragging = false
             }
