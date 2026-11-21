@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -71,24 +72,9 @@ PanelWindow {
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
     readonly property bool hasMusicService: activePlayer !== null
 
-    // ─── Rock-Solid 2-Slot Simultaneous M3E Carousel (IMPOSSIBLE to slide to itself, 144Hz GPU-composited!) ───
+    // ─── Native Qt6 StackView + M3Anim Track Transition (0ms delay, guaranteed every-frame 144Hz animation!) ───
     property string activeTitle: ""
-    property string slot0Title: ""
-    property string slot0Artist: ""
-    property string slot0Art: ""
-    property string slot1Title: ""
-    property string slot1Artist: ""
-    property string slot1Art: ""
-
-    property int activeSlot: 0
-    property int skipDir: 1
-    property bool carouselAnimating: false
-
-    // Pending metadata collector (coalesces Chromium's split title -> artist -> artUrl burst cleanly!)
-    property string stagedTitle: ""
-    property string stagedArtist: ""
-    property string stagedArt: ""
-    property string lastCommittedArt: ""
+    property int skipDir: 1   // +1 = Next (slides left, new enters from right), -1 = Prev
 
     property real lyricsOpacity: 1.0
     property real lyricsLiftY: 0
@@ -99,61 +85,13 @@ PanelWindow {
         lyricsRevealAnim.restart()
     }
 
-    function commitStagedTrack() {
-        commitTrackTimer.stop()
-        if (stagedTitle === "" || stagedTitle === activeTitle) return
-
-        const nextSlot = activeSlot === 0 ? 1 : 0
-        const useArt = stagedArt !== "" ? stagedArt : ""
-        if (nextSlot === 0) {
-            slot0Title = stagedTitle
-            slot0Artist = stagedArtist
-            slot0Art = useArt
-        } else {
-            slot1Title = stagedTitle
-            slot1Artist = stagedArtist
-            slot1Art = useArt
-        }
-
-        const dir = skipDir || 1
-        activeTitle = stagedTitle
-        lastCommittedArt = useArt
-        skipBufferShield.stop()
-        skipBuffering = false
-
-        // Reset scrubber cleanly to 0:00 at exact track transition
-        livePos = 0
-        if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
-
-        // Smooth simultaneous 2-card carousel transition (old glides out while new glides in!)
-        carouselAnim.stop()
-        const outItem = activeSlot === 0 ? cardSlot0 : cardSlot1
-        const inItem  = nextSlot === 0 ? cardSlot0 : cardSlot1
-        activeSlot = nextSlot
-        carouselAnimating = true
-
-        outItem.z = 1
-        inItem.z = 2
-        inItem.slideX = dir * 110
-        inItem.opacity = 0.0
-        inItem.scale = 0.92
-
-        outXAnim.target = outItem; outXAnim.from = outItem.slideX; outXAnim.to = -dir * 110
-        outOpAnim.target = outItem; outOpAnim.from = outItem.opacity; outOpAnim.to = 0.0
-        outScAnim.target = outItem; outScAnim.from = outItem.scale; outScAnim.to = 0.92
-
-        inXAnim.target = inItem; inXAnim.from = dir * 110; inXAnim.to = 0
-        inOpAnim.target = inItem; inOpAnim.from = 0.0; inOpAnim.to = 1.0
-        inScAnim.target = inItem; inScAnim.from = 0.92; inScAnim.to = 1.0
-
-        carouselAnim.restart()
-        skipDir = 1
-    }
-
     readonly property string liveTrackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
+    readonly property string liveTrackArtist: activePlayer ? (activePlayer.trackArtist || "") : ""
     readonly property string liveArtUrl: activePlayer ? (activePlayer.trackArtUrl || "") : ""
+
     onLiveTrackTitleChanged: if (liveTrackTitle !== "") syncTrackCache()
-    onLiveArtUrlChanged: if (liveArtUrl !== "") syncTrackCache()
+    onLiveTrackArtistChanged: if (liveTrackArtist !== "" && trackStack.currentItem && activeTitle === liveTrackTitle) trackStack.currentItem.trackArtist = liveTrackArtist
+    onLiveArtUrlChanged: if (liveArtUrl !== "" && trackStack.currentItem && activeTitle === liveTrackTitle) trackStack.currentItem.artUrl = liveArtUrl
 
     function syncTrackCache() {
         if (!activePlayer) return
@@ -162,90 +100,51 @@ PanelWindow {
         const art = activePlayer.trackArtUrl || ""
         if (t === "") return
 
-        // First track on startup: populate active slot immediately without transition
-        if (activeTitle === "") {
-            activeTitle = t
-            slot0Title = t
-            slot0Artist = a
-            slot0Art = art
-            stagedTitle = t
-            stagedArtist = a
-            stagedArt = art
-            lastCommittedArt = art
-            activeSlot = 0
-            cardSlot0.slideX = 0; cardSlot0.opacity = 1.0; cardSlot0.scale = 1.0; cardSlot0.z = 2
-            cardSlot1.slideX = 110; cardSlot1.opacity = 0.0; cardSlot1.scale = 0.92; cardSlot1.z = 1
-            fetchLyricsForCurrent()
-            return
-        }
-
-        // Same currently displayed track: silently update late-arriving artist or cover art!
+        // Same currently shown track -> update late-arriving artist/art smoothly in place!
         if (t === activeTitle) {
-            if (activeSlot === 0) {
-                if (a !== "") slot0Artist = a
-                if (art !== "" && art !== slot0Art) { slot0Art = art; lastCommittedArt = art }
-            } else {
-                if (a !== "") slot1Artist = a
-                if (art !== "" && art !== slot1Art) { slot1Art = art; lastCommittedArt = art }
+            if (trackStack.currentItem) {
+                if (a !== "") trackStack.currentItem.trackArtist = a
+                if (art !== "") trackStack.currentItem.artUrl = art
             }
             fetchLyricsForCurrent()
             return
         }
 
-        // Brand-new track! Stage metadata and wait briefly (~260ms max) for Chromium's fresh artUrl to arrive together
-        const isFirstSight = (t !== stagedTitle)
-        stagedTitle = t
-        if (a !== "") stagedArtist = a
-        if (art !== "" && art !== lastCommittedArt) stagedArt = art
-        else if (isFirstSight) stagedArt = ""
+        const isFirst = (activeTitle === "")
+        activeTitle = t
+        skipBufferShield.stop()
+        skipBuffering = false
 
-        if (isFirstSight) {
-            // Immediately begin fetching lyrics & gently fade old lyrics out
-            fetchLyricsForCurrent()
-            if (lyricsLines.length > 0) {
-                lyricsRevealAnim.stop()
-                lyricsExitAnim.restart()
-            }
-            livePos = 0
-            if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
+        // Reset scrubber cleanly to 0:00 immediately
+        livePos = 0
+        if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
+
+        // Smoothly glide old lyrics out & fetch new track lyrics immediately
+        if (!isFirst && lyricsLines.length > 0) {
+            lyricsRevealAnim.stop()
+            lyricsExitAnim.restart()
         }
+        fetchLyricsForCurrent()
 
-        // If fresh cover art AND artist have already arrived, animate immediately; otherwise wait up to 280ms!
-        if (stagedArt !== "" && stagedArtist !== "") {
-            commitStagedTrack()
+        // Native Qt6 StackView replace (instant, zero 280ms delay, zero FBO stall, M3Motion BezierSpline!)
+        if (isFirst || trackStack.depth === 0) {
+            trackStack.replace(null, trackSlideComp, { trackTitle: t, trackArtist: a, artUrl: art }, StackView.Immediate)
         } else {
-            commitTrackTimer.restart()
+            trackStack.replace(trackSlideComp, { trackTitle: t, trackArtist: a, artUrl: art })
         }
-    }
-
-    Timer {
-        id: commitTrackTimer
-        interval: 280
-        repeat: false
-        onTriggered: musicWin.commitStagedTrack()
-    }
-
-    ParallelAnimation {
-        id: carouselAnim
-        NumberAnimation { id: outXAnim; property: "slideX"; duration: 280; easing.type: Easing.OutCubic }
-        NumberAnimation { id: outOpAnim; property: "opacity"; duration: 220; easing.type: Easing.OutCubic }
-        NumberAnimation { id: outScAnim; property: "scale"; duration: 280; easing.type: Easing.OutCubic }
-        NumberAnimation { id: inXAnim; property: "slideX"; duration: 400; easing.type: Easing.OutQuint }
-        NumberAnimation { id: inOpAnim; property: "opacity"; duration: 320; easing.type: Easing.OutCubic }
-        NumberAnimation { id: inScAnim; property: "scale"; duration: 400; easing.type: Easing.OutQuint }
-        onFinished: musicWin.carouselAnimating = false
+        skipDir = 1
     }
 
     ParallelAnimation {
         id: lyricsExitAnim
-        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 0; to: -12; duration: 165; easing.type: Easing.InCubic }
-        NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 1.0; to: 0.0; duration: 150; easing.type: Easing.InCubic }
+        M3Anim { target: musicWin; property: "lyricsLiftY"; from: 0; to: -12; type: M3Anim.EmphasizedAccel }
+        M3Anim { target: musicWin; property: "lyricsOpacity"; from: 1.0; to: 0.0; type: M3Anim.FastEffects }
     }
 
     ParallelAnimation {
         id: lyricsRevealAnim
-        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 14; to: 0; duration: 380; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 0.0; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
+        M3Anim { target: musicWin; property: "lyricsLiftY"; from: 14; to: 0; type: M3Anim.EmphasizedDecel }
+        M3Anim { target: musicWin; property: "lyricsOpacity"; from: 0.0; to: 1.0; type: M3Anim.SlowEffects }
     }
 
     property bool animShown: false
@@ -584,24 +483,14 @@ PanelWindow {
 
                 Item { Layout.fillHeight: true; Layout.minimumHeight: 8; Layout.maximumHeight: 16 }
 
-                // 2-Slot Simultaneous GPU-Layered M3E Track Carousel (old glides out while new glides in at 144Hz!)
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 244
-                    clip: true
-
-                    component TrackCardSlot: Item {
-                        id: slotItem
+                // Native Qt6 StackView with Official Material Design 3 Expressive BezierSpline Motion!
+                Component {
+                    id: trackSlideComp
+                    Item {
+                        id: slideRoot
                         property string trackTitle: ""
                         property string trackArtist: ""
                         property string artUrl: ""
-                        property real slideX: 0
-
-                        anchors.fill: parent
-                        transform: Translate { x: slotItem.slideX }
-                        // GPU texture cache during slide = locked 144 FPS with zero layout churn!
-                        layer.enabled: musicWin.carouselAnimating
-                        layer.smooth: true
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -620,9 +509,9 @@ PanelWindow {
                                 clip: true
 
                                 Image {
-                                    id: slotArtImg
+                                    id: slideArt
                                     anchors.fill: parent
-                                    source: slotItem.artUrl
+                                    source: slideRoot.artUrl
                                     asynchronous: true
                                     sourceSize.width: 256
                                     sourceSize.height: 256
@@ -630,12 +519,13 @@ PanelWindow {
                                     fillMode: Image.PreserveAspectCrop
                                     smooth: true
                                     mipmap: true
-                                    visible: status === Image.Ready
+                                    opacity: status === Image.Ready ? 1.0 : 0.0
+                                    Behavior on opacity { M3Anim { type: M3Anim.FastEffects } }
                                 }
 
                                 M3Icon {
                                     anchors.centerIn: parent
-                                    visible: !slotArtImg.visible
+                                    visible: slideArt.status !== Image.Ready
                                     name: "album"
                                     size: 72
                                     filled: true
@@ -650,7 +540,7 @@ PanelWindow {
                                 M3Text {
                                     role: "headline"
                                     customSize: 17
-                                    text: slotItem.trackTitle !== "" ? slotItem.trackTitle : "Ожидание трека"
+                                    text: slideRoot.trackTitle !== "" ? slideRoot.trackTitle : "Ожидание трека"
                                     color: Theme.fgSurface
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
@@ -660,7 +550,7 @@ PanelWindow {
                                 M3Text {
                                     role: "label"
                                     customSize: 12
-                                    text: slotItem.trackArtist
+                                    text: slideRoot.trackArtist
                                     color: Theme.primary
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
@@ -669,20 +559,54 @@ PanelWindow {
                             }
                         }
                     }
+                }
 
-                    TrackCardSlot {
-                        id: cardSlot0
-                        trackTitle: musicWin.slot0Title
-                        trackArtist: musicWin.slot0Artist
-                        artUrl: musicWin.slot0Art
+                StackView {
+                    id: trackStack
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 244
+                    clip: true
+
+                    replaceEnter: Transition {
+                        M3Anim {
+                            property: "x"
+                            from: musicWin.skipDir * 140
+                            to: 0
+                            type: M3Anim.EmphasizedDecel
+                        }
+                        M3Anim {
+                            property: "opacity"
+                            from: 0.0
+                            to: 1.0
+                            type: M3Anim.DefaultEffects
+                        }
+                        M3Anim {
+                            property: "scale"
+                            from: 0.92
+                            to: 1.0
+                            type: M3Anim.EmphasizedDecel
+                        }
                     }
 
-                    TrackCardSlot {
-                        id: cardSlot1
-                        trackTitle: musicWin.slot1Title
-                        trackArtist: musicWin.slot1Artist
-                        artUrl: musicWin.slot1Art
-                        opacity: 0.0
+                    replaceExit: Transition {
+                        M3Anim {
+                            property: "x"
+                            from: 0
+                            to: -musicWin.skipDir * 140
+                            type: M3Anim.FastSpatial
+                        }
+                        M3Anim {
+                            property: "opacity"
+                            from: 1.0
+                            to: 0.0
+                            type: M3Anim.FastEffects
+                        }
+                        M3Anim {
+                            property: "scale"
+                            from: 1.0
+                            to: 0.92
+                            type: M3Anim.FastSpatial
+                        }
                     }
                 }
 
@@ -694,7 +618,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     player: musicWin.activePlayer
                     playingOverride: musicWin.isActuallyPlaying
-                    holdAtZero: commitTrackTimer.running
+                    holdAtZero: musicWin.skipBuffering
                     activeColor: Theme.primary
                     inactiveColor: Theme.alpha(Theme.fgSurfaceVariant, 0.28)
                     textColor: Theme.fgSurfaceVariant
@@ -750,7 +674,7 @@ PanelWindow {
                         color: Theme.primary
                         scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on radius { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
+                        Behavior on radius { M3Anim { type: M3Anim.FastSpatial } }
                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         Behavior on color { ColorAnimation { duration: 180 } }
 
@@ -892,12 +816,11 @@ PanelWindow {
                         opacity: musicWin.lyricsOpacity
                         transform: Translate { y: musicWin.lyricsLiftY }
 
-                        NumberAnimation {
+                        M3Anim {
                             id: lyricsScrollAnim
                             target: lyricsList
                             property: "contentY"
-                            duration: 420
-                            easing.type: Easing.OutQuint
+                            type: M3Anim.EmphasizedDecel
                         }
 
                         delegate: Item {
