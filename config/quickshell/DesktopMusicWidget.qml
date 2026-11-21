@@ -71,249 +71,180 @@ PanelWindow {
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
     readonly property bool hasMusicService: activePlayer !== null
 
-    // ─── Synchronized 2-Phase Material 3 Expressive Track Slide-Out -> Wait-for-Art -> Slide-In ───
-    property string displayedTitle: ""
-    property string displayedArtist: ""
-    property string displayedAlbum: ""
-    property string displayedArtUrl: ""
+    // ─── Rock-Solid 2-Slot Simultaneous M3E Carousel (IMPOSSIBLE to slide to itself, 144Hz GPU-composited!) ───
+    property string activeTitle: ""
+    property string slot0Title: ""
+    property string slot0Artist: ""
+    property string slot0Art: ""
+    property string slot1Title: ""
+    property string slot1Artist: ""
+    property string slot1Art: ""
 
-    property string pendingTitle: ""
-    property string pendingArtist: ""
-    property string pendingAlbum: ""
-    property string pendingArtUrl: ""
-    property string oldArtUrlBeforeSkip: ""
+    property int activeSlot: 0
+    property int skipDir: 1
+    property bool carouselAnimating: false
 
-    // State machine: "idle" | "exiting" | "waiting" | "entering"
-    property string swapPhase: "idle"
-    property int skipDir: 1   // +1 = Next (exits left, enters from right), -1 = Prev (exits right, enters from left)
+    // Pending metadata collector (coalesces Chromium's split title -> artist -> artUrl burst cleanly!)
+    property string stagedTitle: ""
+    property string stagedArtist: ""
+    property string stagedArt: ""
+    property string lastCommittedArt: ""
 
-    property real stageX: 0
-    property real stageScale: 1.0
-    property real stageOpacity: 1.0
     property real lyricsOpacity: 1.0
     property real lyricsLiftY: 0
     property bool lyricsFetchedOnce: false
 
     function triggerLyricsReveal() {
-        lyricsRevealAnim.stop()
-        lyricsLiftY = 14
-        lyricsOpacity = 0.0
-        lyricsRevealAnim.start()
+        lyricsExitAnim.stop()
+        lyricsRevealAnim.restart()
     }
 
-    // Called ONLY once the NEW track title has actually arrived from MPRIS (never slides back to the same track!)
-    function beginTrackExit(dir) {
-        skipDir = dir || 1
-        oldArtUrlBeforeSkip = displayedArtUrl
-        if (pendingArtUrl === displayedArtUrl) pendingArtUrl = ""
-        livePos = 0
-        if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
-        if (lyricsLines.length > 0) {
-            lyricsRevealAnim.stop()
-            lyricsExitAnim.restart()
-        }
-        swapWaitTimer.stop()
-        slideInAnim.stop()
-        if (swapPhase === "idle" || swapPhase === "entering") {
-            swapPhase = "exiting"
-            slideOutAnim.restart()
-        }
-    }
+    function commitStagedTrack() {
+        commitTrackTimer.stop()
+        if (stagedTitle === "" || stagedTitle === activeTitle) return
 
-    function finishSwapAndEnter() {
-        swapWaitTimer.stop()
+        const nextSlot = activeSlot === 0 ? 1 : 0
+        const useArt = stagedArt !== "" ? stagedArt : ""
+        if (nextSlot === 0) {
+            slot0Title = stagedTitle
+            slot0Artist = stagedArtist
+            slot0Art = useArt
+        } else {
+            slot1Title = stagedTitle
+            slot1Artist = stagedArtist
+            slot1Art = useArt
+        }
+
+        const dir = skipDir || 1
+        activeTitle = stagedTitle
+        lastCommittedArt = useArt
         skipBufferShield.stop()
         skipBuffering = false
-        if (pendingTitle !== "") displayedTitle = pendingTitle
-        if (pendingArtist !== "") displayedArtist = pendingArtist
-        displayedAlbum = pendingAlbum
-        if (pendingArtUrl !== "") {
-            displayedArtUrl = pendingArtUrl
-        } else if (liveArtUrl !== "" && liveArtUrl !== oldArtUrlBeforeSkip) {
-            displayedArtUrl = liveArtUrl
-        }
+
+        // Reset scrubber cleanly to 0:00 at exact track transition
         livePos = 0
         if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
-        swapPhase = "entering"
-        slideInAnim.restart()
-    }
 
-    function checkReadyToEnter() {
-        if (swapPhase !== "waiting") return
-        const hasTitle = pendingTitle !== "" && pendingTitle !== displayedTitle
-        const hasFreshArt = pendingArtUrl !== "" && pendingArtUrl !== oldArtUrlBeforeSkip && artPreloader.status === Image.Ready
-        if (hasTitle && hasFreshArt) {
-            finishSwapAndEnter()
-        }
+        // Smooth simultaneous 2-card carousel transition (old glides out while new glides in!)
+        carouselAnim.stop()
+        const outItem = activeSlot === 0 ? cardSlot0 : cardSlot1
+        const inItem  = nextSlot === 0 ? cardSlot0 : cardSlot1
+        activeSlot = nextSlot
+        carouselAnimating = true
+
+        outItem.z = 1
+        inItem.z = 2
+        inItem.slideX = dir * 110
+        inItem.opacity = 0.0
+        inItem.scale = 0.92
+
+        outXAnim.target = outItem; outXAnim.from = outItem.slideX; outXAnim.to = -dir * 110
+        outOpAnim.target = outItem; outOpAnim.from = outItem.opacity; outOpAnim.to = 0.0
+        outScAnim.target = outItem; outScAnim.from = outItem.scale; outScAnim.to = 0.92
+
+        inXAnim.target = inItem; inXAnim.from = dir * 110; inXAnim.to = 0
+        inOpAnim.target = inItem; inOpAnim.from = 0.0; inOpAnim.to = 1.0
+        inScAnim.target = inItem; inScAnim.from = 0.92; inScAnim.to = 1.0
+
+        carouselAnim.restart()
+        skipDir = 1
     }
 
     readonly property string liveTrackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
     readonly property string liveArtUrl: activePlayer ? (activePlayer.trackArtUrl || "") : ""
-    onLiveTrackTitleChanged: {
-        if (liveTrackTitle !== "") syncTrackCache()
-    }
-    onLiveArtUrlChanged: {
-        if (liveArtUrl !== "") {
-            pendingArtUrl = liveArtUrl
-            if (displayedArtUrl === "") {
-                displayedArtUrl = liveArtUrl
-            } else if (swapPhase === "idle" || swapPhase === "entering") {
-                // Always catch late-arriving cover art (e.g. after Prev/Next when Chromium writes /tmp art slightly later!)
-                displayedArtUrl = liveArtUrl
-            } else {
-                checkReadyToEnter()
-            }
-        }
-    }
+    onLiveTrackTitleChanged: if (liveTrackTitle !== "") syncTrackCache()
+    onLiveArtUrlChanged: if (liveArtUrl !== "") syncTrackCache()
 
     function syncTrackCache() {
         if (!activePlayer) return
         const t = activePlayer.trackTitle || ""
         const a = activePlayer.trackArtist || ""
-        const alb = activePlayer.trackAlbum || ""
         const art = activePlayer.trackArtUrl || ""
         if (t === "") return
 
-        // First track on startup: show immediately without exit slide
-        if (displayedTitle === "") {
-            displayedTitle = t
-            displayedArtist = a
-            displayedAlbum = alb
-            displayedArtUrl = art
-            pendingTitle = t
-            pendingArtist = a
-            pendingAlbum = alb
-            pendingArtUrl = art
-            oldArtUrlBeforeSkip = art
+        // First track on startup: populate active slot immediately without transition
+        if (activeTitle === "") {
+            activeTitle = t
+            slot0Title = t
+            slot0Artist = a
+            slot0Art = art
+            stagedTitle = t
+            stagedArtist = a
+            stagedArt = art
+            lastCommittedArt = art
+            activeSlot = 0
+            cardSlot0.slideX = 0; cardSlot0.opacity = 1.0; cardSlot0.scale = 1.0; cardSlot0.z = 2
+            cardSlot1.slideX = 110; cardSlot1.opacity = 0.0; cardSlot1.scale = 0.92; cardSlot1.z = 1
             fetchLyricsForCurrent()
             return
         }
 
-        // Update pending fields cleanly (Chromium delivers title -> artist -> artUrl over ~200ms!)
-        const isNewTrack = (t !== displayedTitle && t !== pendingTitle)
-        pendingTitle = t
-        if (a !== "") pendingArtist = a
-        pendingAlbum = alb
-        if (art !== "") pendingArtUrl = art
-
-        if (isNewTrack) {
-            fetchLyricsForCurrent()
-            if (swapPhase === "idle" || swapPhase === "entering") {
-                beginTrackExit(skipDir)
-            } else if (swapPhase === "waiting") {
-                checkReadyToEnter()
+        // Same currently displayed track: silently update late-arriving artist or cover art!
+        if (t === activeTitle) {
+            if (activeSlot === 0) {
+                if (a !== "") slot0Artist = a
+                if (art !== "" && art !== slot0Art) { slot0Art = art; lastCommittedArt = art }
+            } else {
+                if (a !== "") slot1Artist = a
+                if (art !== "" && art !== slot1Art) { slot1Art = art; lastCommittedArt = art }
             }
-        } else if (swapPhase === "waiting") {
-            checkReadyToEnter()
-        } else if (swapPhase === "idle" && t === displayedTitle) {
-            if (a !== "") displayedArtist = a
-            displayedAlbum = alb
-            if (art !== "") displayedArtUrl = art
             fetchLyricsForCurrent()
+            return
+        }
+
+        // Brand-new track! Stage metadata and wait briefly (~260ms max) for Chromium's fresh artUrl to arrive together
+        const isFirstSight = (t !== stagedTitle)
+        stagedTitle = t
+        if (a !== "") stagedArtist = a
+        if (art !== "" && art !== lastCommittedArt) stagedArt = art
+        else if (isFirstSight) stagedArt = ""
+
+        if (isFirstSight) {
+            // Immediately begin fetching lyrics & gently fade old lyrics out
+            fetchLyricsForCurrent()
+            if (lyricsLines.length > 0) {
+                lyricsRevealAnim.stop()
+                lyricsExitAnim.restart()
+            }
+            livePos = 0
+            if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
+        }
+
+        // If fresh cover art AND artist have already arrived, animate immediately; otherwise wait up to 280ms!
+        if (stagedArt !== "" && stagedArtist !== "") {
+            commitStagedTrack()
+        } else {
+            commitTrackTimer.restart()
         }
     }
 
-    // Invisible (opacity:0, 1x1) async preloader — visible:true is REQUIRED in Qt6 so Image actually decodes!
-    Image {
-        id: artPreloader
-        width: 1
-        height: 1
-        opacity: 0.0
-        source: musicWin.pendingArtUrl
-        asynchronous: true
-        sourceSize.width: 256
-        sourceSize.height: 256
-        cache: true
-        onStatusChanged: {
-            if (status === Image.Ready) musicWin.checkReadyToEnter()
-        }
-    }
-
-    // Safety timeout: if a song has no cover art or art takes >450ms, slide in cleanly anyway!
     Timer {
-        id: swapWaitTimer
-        interval: 450
+        id: commitTrackTimer
+        interval: 280
         repeat: false
-        onTriggered: {
-            if (musicWin.swapPhase === "waiting") {
-                musicWin.finishSwapAndEnter()
-            }
-        }
+        onTriggered: musicWin.commitStagedTrack()
     }
 
-    // Smooth lyrics exit glide synchronized with track slide-out
+    ParallelAnimation {
+        id: carouselAnim
+        NumberAnimation { id: outXAnim; property: "slideX"; duration: 280; easing.type: Easing.OutCubic }
+        NumberAnimation { id: outOpAnim; property: "opacity"; duration: 220; easing.type: Easing.OutCubic }
+        NumberAnimation { id: outScAnim; property: "scale"; duration: 280; easing.type: Easing.OutCubic }
+        NumberAnimation { id: inXAnim; property: "slideX"; duration: 400; easing.type: Easing.OutQuint }
+        NumberAnimation { id: inOpAnim; property: "opacity"; duration: 320; easing.type: Easing.OutCubic }
+        NumberAnimation { id: inScAnim; property: "scale"; duration: 400; easing.type: Easing.OutQuint }
+        onFinished: musicWin.carouselAnimating = false
+    }
+
     ParallelAnimation {
         id: lyricsExitAnim
         NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 0; to: -12; duration: 165; easing.type: Easing.InCubic }
         NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 1.0; to: 0.0; duration: 150; easing.type: Easing.InCubic }
     }
 
-    // Phase 1: Old song visibly glides OUT (0 -> +-96px) while holding old cover & title
-    ParallelAnimation {
-        id: slideOutAnim
-        NumberAnimation {
-            target: musicWin; property: "stageX"
-            from: 0; to: -musicWin.skipDir * 96
-            duration: 185; easing.type: Easing.InCubic
-        }
-        NumberAnimation {
-            target: musicWin; property: "stageScale"
-            from: 1.0; to: 0.88
-            duration: 185; easing.type: Easing.InCubic
-        }
-        NumberAnimation {
-            target: musicWin; property: "stageOpacity"
-            from: 1.0; to: 0.0
-            duration: 165; easing.type: Easing.InCubic
-        }
-        onFinished: {
-            musicWin.swapPhase = "waiting"
-            musicWin.checkReadyToEnter()
-            if (musicWin.swapPhase === "waiting") {
-                swapWaitTimer.restart()
-            }
-        }
-    }
-
-    // Phase 2: New song (fully decoded cover + title + artist!) glides smoothly IN (+-104px -> 0, OutQuint)
-    ParallelAnimation {
-        id: slideInAnim
-        NumberAnimation {
-            target: musicWin; property: "stageX"
-            from: musicWin.skipDir * 104; to: 0
-            duration: 420; easing.type: Easing.OutQuint
-        }
-        NumberAnimation {
-            target: musicWin; property: "stageScale"
-            from: 0.88; to: 1.0
-            duration: 420; easing.type: Easing.OutQuint
-        }
-        NumberAnimation {
-            target: musicWin; property: "stageOpacity"
-            from: 0.0; to: 1.0
-            duration: 340; easing.type: Easing.OutCubic
-        }
-        onFinished: {
-            musicWin.swapPhase = "idle"
-            musicWin.skipDir = 1
-            if (musicWin.pendingTitle !== "" && musicWin.displayedTitle !== musicWin.pendingTitle) {
-                musicWin.displayedTitle = musicWin.pendingTitle
-            }
-            if (musicWin.pendingArtist !== "" && musicWin.displayedArtist !== musicWin.pendingArtist) {
-                musicWin.displayedArtist = musicWin.pendingArtist
-            }
-            if (musicWin.pendingArtUrl !== "" && musicWin.displayedArtUrl !== musicWin.pendingArtUrl) {
-                musicWin.displayedArtUrl = musicWin.pendingArtUrl
-            } else if (musicWin.liveArtUrl !== "" && musicWin.displayedArtUrl !== musicWin.liveArtUrl) {
-                musicWin.displayedArtUrl = musicWin.liveArtUrl
-            }
-            musicWin.oldArtUrlBeforeSkip = musicWin.displayedArtUrl
-        }
-    }
-
     ParallelAnimation {
         id: lyricsRevealAnim
-        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 14; to: 0; duration: 360; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 14; to: 0; duration: 380; easing.type: Easing.OutQuint }
         NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 0.0; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
     }
 
@@ -653,82 +584,105 @@ PanelWindow {
 
                 Item { Layout.fillHeight: true; Layout.minimumHeight: 8; Layout.maximumHeight: 16 }
 
-                // Clipped Synchronized M3E Shared Axis X Stage (Cover + Title + Artist glide out & in as ONE unit!)
+                // 2-Slot Simultaneous GPU-Layered M3E Track Carousel (old glides out while new glides in at 144Hz!)
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 244
                     clip: true
 
-                    ColumnLayout {
+                    component TrackCardSlot: Item {
+                        id: slotItem
+                        property string trackTitle: ""
+                        property string trackArtist: ""
+                        property string artUrl: ""
+                        property real slideX: 0
+
                         anchors.fill: parent
-                        spacing: 10
-                        opacity: musicWin.stageOpacity
-                        scale: musicWin.stageScale
-                        transform: Translate { x: musicWin.stageX }
+                        transform: Translate { x: slotItem.slideX }
+                        // GPU texture cache during slide = locked 144 FPS with zero layout churn!
+                        layer.enabled: musicWin.carouselAnimating
+                        layer.smooth: true
 
-                        // Hero Album Cover Art (192x192, ExtraLarge 24px)
-                        Rectangle {
-                            Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: 192
-                            Layout.preferredHeight: 192
-                            width: 192
-                            height: 192
-                            radius: 24
-                            color: Theme.alpha(Theme.primaryContainer, 0.55)
-                            border.width: 1
-                            border.color: Theme.alpha(Theme.primary, 0.28)
-                            clip: true
-
-                            Image {
-                                id: coverArt
-                                anchors.fill: parent
-                                source: musicWin.displayedArtUrl
-                                asynchronous: false
-                                sourceSize.width: 256
-                                sourceSize.height: 256
-                                cache: true
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                                visible: status === Image.Ready
-                            }
-
-                            M3Icon {
-                                anchors.centerIn: parent
-                                visible: !coverArt.visible
-                                name: "album"
-                                size: 72
-                                filled: true
-                                color: Theme.fgPrimaryContainer
-                            }
-                        }
-
-                        // Track Title + Artist (subtle horizontal parallax inside stage)
                         ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            transform: Translate { x: musicWin.stageX * 0.22 }
+                            anchors.fill: parent
+                            spacing: 10
 
-                            M3Text {
-                                role: "headline"
-                                customSize: 17
-                                text: musicWin.displayedTitle !== "" ? musicWin.displayedTitle : (musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "Ожидание трека") : "")
-                                color: Theme.fgSurface
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
+                            Rectangle {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 192
+                                Layout.preferredHeight: 192
+                                width: 192
+                                height: 192
+                                radius: 24
+                                color: Theme.alpha(Theme.primaryContainer, 0.55)
+                                border.width: 1
+                                border.color: Theme.alpha(Theme.primary, 0.28)
+                                clip: true
+
+                                Image {
+                                    id: slotArtImg
+                                    anchors.fill: parent
+                                    source: slotItem.artUrl
+                                    asynchronous: true
+                                    sourceSize.width: 256
+                                    sourceSize.height: 256
+                                    cache: true
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    mipmap: true
+                                    visible: status === Image.Ready
+                                }
+
+                                M3Icon {
+                                    anchors.centerIn: parent
+                                    visible: !slotArtImg.visible
+                                    name: "album"
+                                    size: 72
+                                    filled: true
+                                    color: Theme.fgPrimaryContainer
+                                }
                             }
 
-                            M3Text {
-                                role: "label"
-                                customSize: 12
-                                text: musicWin.displayedArtist !== "" ? musicWin.displayedArtist : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : "")
-                                color: Theme.primary
-                                elide: Text.ElideRight
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
+                                spacing: 2
+
+                                M3Text {
+                                    role: "headline"
+                                    customSize: 17
+                                    text: slotItem.trackTitle !== "" ? slotItem.trackTitle : "Ожидание трека"
+                                    color: Theme.fgSurface
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+
+                                M3Text {
+                                    role: "label"
+                                    customSize: 12
+                                    text: slotItem.trackArtist
+                                    color: Theme.primary
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
                             }
                         }
+                    }
+
+                    TrackCardSlot {
+                        id: cardSlot0
+                        trackTitle: musicWin.slot0Title
+                        trackArtist: musicWin.slot0Artist
+                        artUrl: musicWin.slot0Art
+                    }
+
+                    TrackCardSlot {
+                        id: cardSlot1
+                        trackTitle: musicWin.slot1Title
+                        trackArtist: musicWin.slot1Artist
+                        artUrl: musicWin.slot1Art
+                        opacity: 0.0
                     }
                 }
 
@@ -740,7 +694,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     player: musicWin.activePlayer
                     playingOverride: musicWin.isActuallyPlaying
-                    holdAtZero: musicWin.swapPhase === "exiting" || musicWin.swapPhase === "waiting"
+                    holdAtZero: commitTrackTimer.running
                     activeColor: Theme.primary
                     inactiveColor: Theme.alpha(Theme.fgSurfaceVariant, 0.28)
                     textColor: Theme.fgSurfaceVariant

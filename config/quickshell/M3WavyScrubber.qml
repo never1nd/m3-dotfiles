@@ -101,29 +101,26 @@ Item {
     }
 
     property real wavePhase: 0.0
-    Timer {
-        interval: 16
+    // Locked 1:1 Wayland compositor VSync (144Hz smooth, zero 16ms JS Timer beat-frequency judder!)
+    FrameAnimation {
+        id: vsyncAnim
         running: scrubber.visible && scrubber.activeAnimation && (scrubber.isPlaying || scrubber.waveAmp > 0.05)
-        repeat: true
         onTriggered: {
+            const dt = Math.min(0.05, Math.max(0.0, frameTime))
             if (scrubber.isPlaying && !scrubber.dragging && !scrubber.holdAtZero) {
-                const elapsed = Math.max(0, (Date.now() - scrubber.anchorMs) / 1000.0)
-                // Guard against huge elapsed jump if timer was suspended/resumed
-                if (elapsed < 3.0) {
-                    const nextPos = scrubber.anchorPos + elapsed
-                    scrubber.currentPos = scrubber.hasKnownLength ? Math.min(scrubber.trackLen, nextPos) : nextPos
-                } else {
-                    scrubber.anchorPos = scrubber.currentPos
-                    scrubber.anchorMs = Date.now()
-                }
+                const nextPos = scrubber.currentPos + dt
+                scrubber.currentPos = scrubber.hasKnownLength ? Math.min(scrubber.trackLen, nextPos) : nextPos
+                scrubber.anchorPos = scrubber.currentPos
+                scrubber.anchorMs = Date.now()
             }
-            scrubber.wavePhase = (scrubber.wavePhase + 0.11) % (Math.PI * 2)
+            scrubber.wavePhase = (scrubber.wavePhase + dt * 6.2) % (Math.PI * 2)
             waveCanvas.requestPaint()
         }
     }
 
-    onProgressChanged: waveCanvas.requestPaint()
-    onWaveAmpChanged: waveCanvas.requestPaint()
+    // Only force repaint outside active FrameAnimation (e.g. when paused & dragging/seeking)
+    onProgressChanged: if (!vsyncAnim.running) waveCanvas.requestPaint()
+    onWaveAmpChanged: if (!vsyncAnim.running) waveCanvas.requestPaint()
     onActiveColorChanged: waveCanvas.requestPaint()
     onInactiveColorChanged: waveCanvas.requestPaint()
 
@@ -147,7 +144,7 @@ Item {
             id: waveCanvas
             anchors.fill: parent
             antialiasing: true
-            renderStrategy: Canvas.Threaded
+            renderStrategy: Canvas.Cooperative
 
             onPaint: {
                 const ctx = getContext("2d")
