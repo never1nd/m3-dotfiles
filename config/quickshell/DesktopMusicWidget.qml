@@ -40,19 +40,32 @@ PanelWindow {
     property string cachedTitle: ""
     property string cachedArtist: ""
     property string cachedAlbum: ""
-    property string cachedArtUrl: ""
-    property int trackDir: 1
-    property real trackSlideX: 0
-    property real trackScale: 1.0
-    property real trackOpacity: 1.0
+    property string prevArtUrl: ""
+    property string currentArtUrl: ""
+    property real metaLiftY: 0
+    property real metaOpacity: 1.0
+    property real lyricsOpacity: 1.0
+    property real lyricsLiftY: 0
+    property bool lyricsFetchedOnce: false
 
-    function triggerTrackTransition(dir) {
-        trackDir = dir || 1
-        trackSwitchAnim.stop()
-        trackSlideX = trackDir * 22
-        trackScale = 0.93
-        trackOpacity = 0.0
-        trackSwitchAnim.start()
+    function triggerMetaTransition() {
+        metaSwitchAnim.stop()
+        metaLiftY = 10
+        metaOpacity = 0.0
+        metaSwitchAnim.start()
+    }
+
+    function triggerLyricsReveal() {
+        lyricsRevealAnim.stop()
+        lyricsLiftY = 12
+        lyricsOpacity = 0.0
+        lyricsRevealAnim.start()
+    }
+
+    function updateCoverUrl(newUrl) {
+        if (!newUrl || newUrl === "" || newUrl === currentArtUrl) return
+        if (currentArtUrl !== "") prevArtUrl = currentArtUrl
+        currentArtUrl = newUrl
     }
 
     function syncTrackCache() {
@@ -62,23 +75,26 @@ PanelWindow {
         const alb = activePlayer.trackAlbum || ""
         const art = activePlayer.trackArtUrl || ""
         if (t !== "") {
-            if (cachedTitle !== "" && t !== cachedTitle) {
-                triggerTrackTransition(trackDir)
-            }
+            const changed = (cachedTitle !== "" && t !== cachedTitle)
             cachedTitle = t
             cachedArtist = a
             cachedAlbum = alb
-            if (art !== "") cachedArtUrl = art
-            else if (t !== lastTrackKey.split("||")[1]) cachedArtUrl = ""
+            if (art !== "") updateCoverUrl(art)
+            if (changed) triggerMetaTransition()
             fetchLyricsForCurrent()
         }
     }
 
     ParallelAnimation {
-        id: trackSwitchAnim
-        NumberAnimation { target: musicWin; property: "trackSlideX"; to: 0; duration: 280; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "trackScale"; to: 1.0; duration: 280; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "trackOpacity"; to: 1.0; duration: 240; easing.type: Easing.OutCubic }
+        id: metaSwitchAnim
+        NumberAnimation { target: musicWin; property: "metaLiftY"; to: 0; duration: 300; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "metaOpacity"; to: 1.0; duration: 260; easing.type: Easing.OutCubic }
+    }
+
+    ParallelAnimation {
+        id: lyricsRevealAnim
+        NumberAnimation { target: musicWin; property: "lyricsLiftY"; to: 0; duration: 340; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "lyricsOpacity"; to: 1.0; duration: 300; easing.type: Easing.OutCubic }
     }
 
     property bool animShown: false
@@ -149,10 +165,13 @@ PanelWindow {
         if (t === "" || key === lastTrackKey) return
         lastTrackKey = key
         lyricsLoading = true
+        lyricsFetchedOnce = false
+        lyricsSynced = false
+        lyricsInstrumental = false
         lyricsLines = []
         activeLyricIndex = -1
         lyricsProc.running = false
-        lyricsProc.command = ["__HOME__/.local/bin/m3-lyrics-fetch", a, t]
+        lyricsProc.command = ["__HOME__/.local/bin/m3-lyrics-fetch", a, t, key]
         lyricsProc.running = true
     }
 
@@ -184,7 +203,7 @@ PanelWindow {
         }
         function onTrackArtUrlChanged() {
             if (musicWin.activePlayer && (musicWin.activePlayer.trackArtUrl || "") !== "") {
-                musicWin.cachedArtUrl = musicWin.activePlayer.trackArtUrl
+                musicWin.updateCoverUrl(musicWin.activePlayer.trackArtUrl)
             }
         }
         function onPositionChanged() {
@@ -214,16 +233,23 @@ PanelWindow {
         id: lyricsProc
         stdout: StdioCollector {
             onStreamFinished: {
-                musicWin.lyricsLoading = false
+                const raw = text.trim()
+                if (raw === "") return // Ignore empty stream from cancelled previous fetch!
                 try {
-                    const d = JSON.parse(text.trim() || "{}")
+                    const d = JSON.parse(raw)
+                    // Ignore stale response from an earlier skipped track!
+                    if (d.key && d.key !== musicWin.lastTrackKey) return
+                    musicWin.lyricsLoading = false
+                    musicWin.lyricsFetchedOnce = true
                     musicWin.lyricsSynced = !!d.synced
                     musicWin.lyricsInstrumental = !!d.instrumental
                     musicWin.lyricsLines = d.lines || []
-                    musicWin.updateActiveLyric()
+                    if (musicWin.lyricsLines.length > 0) {
+                        musicWin.triggerLyricsReveal()
+                        musicWin.updateActiveLyric()
+                    }
                 } catch (e) {
-                    musicWin.lyricsSynced = false
-                    musicWin.lyricsLines = []
+                    // Ignore partial output on process restart
                 }
             }
         }
@@ -384,7 +410,7 @@ PanelWindow {
                     }
                 }
 
-                // Hero Album Cover Art (210x210, ExtraLarge 24px!) with M3 Expressive Track-Switch Animation
+                // Hero Album Cover Art (210x210, ExtraLarge 24px!) — true dual-layer crossfade (zero blank pop-in!)
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     width: 210
@@ -394,23 +420,57 @@ PanelWindow {
                     border.width: 1
                     border.color: Theme.alpha(Theme.primary, 0.28)
                     clip: true
-                    opacity: musicWin.trackOpacity
-                    scale: musicWin.trackScale
-                    transform: Translate { x: musicWin.trackSlideX }
 
+                    // Previous cover holds steady underneath until the new cover finishes loading!
                     Image {
-                        id: coverArt
+                        id: coverBack
                         anchors.fill: parent
-                        source: musicWin.cachedArtUrl !== "" ? musicWin.cachedArtUrl : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtUrl || "") : "")
+                        source: musicWin.prevArtUrl
                         fillMode: Image.PreserveAspectCrop
                         smooth: true
                         mipmap: true
                         visible: status === Image.Ready
                     }
 
+                    Image {
+                        id: coverFront
+                        anchors.fill: parent
+                        source: musicWin.currentArtUrl
+                        fillMode: Image.PreserveAspectCrop
+                        smooth: true
+                        mipmap: true
+                        opacity: 0.0
+                        scale: 0.96
+
+                        onSourceChanged: {
+                            if (status === Image.Ready) {
+                                coverFadeAnim.restart()
+                            } else {
+                                opacity = 0.0
+                                scale = 0.96
+                            }
+                        }
+                        onStatusChanged: {
+                            if (status === Image.Ready) {
+                                coverFadeAnim.restart()
+                            }
+                        }
+
+                        ParallelAnimation {
+                            id: coverFadeAnim
+                            NumberAnimation { target: coverFront; property: "opacity"; from: 0.0; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: coverFront; property: "scale"; from: 0.96; to: 1.0; duration: 340; easing.type: Easing.OutQuint }
+                            onFinished: {
+                                if (musicWin.currentArtUrl !== "") {
+                                    musicWin.prevArtUrl = musicWin.currentArtUrl
+                                }
+                            }
+                        }
+                    }
+
                     M3Icon {
                         anchors.centerIn: parent
-                        visible: !coverArt.visible
+                        visible: !coverBack.visible && coverFront.status !== Image.Ready
                         name: "album"
                         size: 72
                         filled: true
@@ -418,12 +478,12 @@ PanelWindow {
                     }
                 }
 
-                // Track Title + Artist with M3 Expressive Emphasized Decelerate Glide
+                // Track Title + Artist — unified calm M3 Expressive vertical lift
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
-                    opacity: musicWin.trackOpacity
-                    transform: Translate { x: musicWin.trackSlideX * 0.72 }
+                    opacity: musicWin.metaOpacity
+                    transform: Translate { y: musicWin.metaLiftY }
 
                     M3Text {
                         role: "headline"
@@ -484,10 +544,7 @@ PanelWindow {
                         iconName: "skip_previous"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: {
-                            musicWin.trackDir = -1
-                            if (musicWin.activePlayer) musicWin.activePlayer.previous()
-                        }
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.previous()
                     }
 
                     // Hero M3 Expressive Morphing Play/Pause Button (Equal 76x76: Squircle Playing <-> Perfect Circle Paused!)
@@ -547,10 +604,7 @@ PanelWindow {
                         iconName: "skip_next"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: {
-                            musicWin.trackDir = 1
-                            if (musicWin.activePlayer) musicWin.activePlayer.next()
-                        }
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.next()
                     }
 
                     DeskMediaBtn {
@@ -635,6 +689,8 @@ PanelWindow {
                         clip: true
                         model: musicWin.lyricsLines
                         visible: musicWin.lyricsLines.length > 0
+                        opacity: musicWin.lyricsOpacity
+                        transform: Translate { y: musicWin.lyricsLiftY }
 
                         delegate: Item {
                             required property var modelData
@@ -690,28 +746,63 @@ PanelWindow {
                         }
                     }
 
-                    // Loading / Instrumental / Not Found Empty States
+                    // Soft M3 Expressive Shimmer Skeleton while loading lyrics in background (zero "not found" flash!)
+                    ColumnLayout {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 22
+                        anchors.rightMargin: 22
+                        spacing: 14
+                        visible: musicWin.lyricsLines.length === 0 && (musicWin.lyricsLoading || !musicWin.lyricsFetchedOnce)
+                        opacity: visible ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+                        Repeater {
+                            model: [0.68, 0.92, 0.78, 0.54, 0.84]
+                            delegate: Rectangle {
+                                required property real modelData
+                                required property int index
+                                Layout.preferredWidth: Math.round(parent.width * modelData)
+                                Layout.preferredHeight: index === 1 ? 18 : 13
+                                radius: 7
+                                color: index === 1 ? Theme.primaryContainer : Theme.fgSurfaceVariant
+                                opacity: 0.16
+
+                                SequentialAnimation on opacity {
+                                    running: musicWin.visible && musicWin.lyricsLines.length === 0 && (musicWin.lyricsLoading || !musicWin.lyricsFetchedOnce)
+                                    loops: Animation.Infinite
+                                    PauseAnimation { duration: index * 110 }
+                                    NumberAnimation { to: 0.34; duration: 680; easing.type: Easing.InOutSine }
+                                    NumberAnimation { to: 0.14; duration: 680; easing.type: Easing.InOutSine }
+                                }
+                            }
+                        }
+                    }
+
+                    // Minimal quiet empty state ONLY after fetch completes with no lyrics (no jarring "not found" banner!)
                     ColumnLayout {
                         anchors.centerIn: parent
-                        visible: musicWin.lyricsLines.length === 0
+                        visible: musicWin.lyricsLines.length === 0 && !musicWin.lyricsLoading && musicWin.lyricsFetchedOnce
+                        opacity: visible ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                         spacing: 8
 
                         M3Icon {
                             Layout.alignment: Qt.AlignHCenter
-                            name: musicWin.lyricsLoading ? "hourglass_top" : (musicWin.lyricsInstrumental ? "piano" : "music_note")
-                            size: 36
+                            name: musicWin.lyricsInstrumental ? "piano" : "music_note"
+                            size: 38
                             filled: true
-                            color: Theme.alpha(Theme.primary, 0.72)
+                            color: Theme.alpha(Theme.primary, musicWin.lyricsInstrumental ? 0.65 : 0.28)
                         }
 
                         M3Text {
+                            visible: musicWin.lyricsInstrumental
                             Layout.alignment: Qt.AlignHCenter
-                            role: "title"
-                            customSize: 13
-                            text: musicWin.lyricsLoading
-                                ? "Загрузка текста песни..."
-                                : (musicWin.lyricsInstrumental ? "Инструментальная композиция" : "Текст песни не найден")
-                            color: Theme.fgSurfaceVariant
+                            role: "label"
+                            customSize: 12
+                            text: "Инструментальная композиция"
+                            color: Theme.alpha(Theme.fgSurfaceVariant, 0.72)
                         }
                     }
                 }
