@@ -1,32 +1,32 @@
-# Material Design 3 Expressive Alacritty Theme (scheme-content, dark)
+# Material Design 3 Expressive Alacritty Theme (scheme-tonal-spot, dark)
 [colors.primary]
-background = "#0f0e11"
-foreground = "#e6e1e6"
+background = "#0c0e13"
+foreground = "#e2e2e9"
 
 [colors.cursor]
-text = "#36275c"
-cursor = "#d0bdfd"
+text = "#102f60"
+cursor = "#adc6ff"
 
 [colors.selection]
-text = "#f9f1ff"
-background = "#594981"
+text = "#d8e2ff"
+background = "#2b4678"
 
 [colors.normal]
-black   = "#211f23"
+black   = "#1e1f25"
 red     = "#ffb4ab"
-green   = "#d0bdfd"
-yellow  = "#fdb0d4"
-blue    = "#ccc2de"
-magenta = "#fdb0d4"
-cyan    = "#d0bdfd"
-white   = "#cac4d0"
+green   = "#adc6ff"
+yellow  = "#9ecae0"
+blue    = "#bfc6dc"
+magenta = "#9ecae0"
+cyan    = "#adc6ff"
+white   = "#c4c6d0"
 
 [colors.bright]
-black   = "#948f9a"
+black   = "#8e9099"
 red     = "#ffb4ab"
-green   = "#e9ddff"
-yellow  = "#ffd8e8"
-blue    = "#e9defb"
-magenta = "#fdb0d4"
-cyan    = "#d0bdfd"
-white   = "#e6e1e6"
+green   = "#d8e2ff"
+yellow  = "#d1eeff"
+blue    = "#dbe2f9"
+magenta = "#9ecae0"
+cyan    = "#adc6ff"
+white   = "#e2e2e9"

@@ -356,18 +356,17 @@ PanelWindow {
                         onTriggered: if (mpWindow.activePlayer) mpWindow.activePlayer.previous()
                     }
 
-                    // Hero M3 Expressive Play/Pause Button (64x48 Squircle Playing <-> 48x48 Perfect Circle Paused, zero RowLayout drift!)
+                    // Hero M3 Expressive Play/Pause Button (Equal 54x54: Squircle Playing <-> Perfect Circle Paused!)
                     Rectangle {
                         id: mpHeroBtn
                         readonly property bool playing: mpWindow.activePlayer ? !!mpWindow.activePlayer.isPlaying : false
                         Layout.alignment: Qt.AlignVCenter
-                        Layout.preferredWidth: playing ? 64 : 48
-                        Layout.preferredHeight: 48
-                        radius: heroPlayA.pressed ? 12 : (playing ? 15 : 24)
+                        Layout.preferredWidth: 54
+                        Layout.preferredHeight: 54
+                        radius: heroPlayA.pressed ? 12 : (playing ? 15 : 27)
                         color: Theme.tertiary
                         scale: heroPlayA.pressed ? 0.92 : (heroPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on Layout.preferredWidth { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
                         Behavior on radius { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         Behavior on color { ColorAnimation { duration: 180 } }

@@ -490,17 +490,16 @@ PanelWindow {
                         }
                     }
 
-                    // Hero M3 Expressive Morphing Play/Pause Button (108x68 Squircle Playing <-> 68x68 Perfect Circle Paused!)
+                    // Hero M3 Expressive Morphing Play/Pause Button (Equal 76x76: Squircle Playing <-> Perfect Circle Paused!)
                     Rectangle {
                         id: deskHeroBtn
                         Layout.alignment: Qt.AlignVCenter
-                        Layout.preferredWidth: musicWin.isActuallyPlaying ? 108 : 68
-                        Layout.preferredHeight: 68
-                        radius: dPlayA.pressed ? 16 : (musicWin.isActuallyPlaying ? 20 : 34)
+                        Layout.preferredWidth: 76
+                        Layout.preferredHeight: 76
+                        radius: dPlayA.pressed ? 16 : (musicWin.isActuallyPlaying ? 20 : 38)
                         color: Theme.primary
                         scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on Layout.preferredWidth { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
                         Behavior on radius { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         Behavior on color { ColorAnimation { duration: 180 } }

@@ -659,14 +659,13 @@ PanelWindow {
                                 Rectangle {
                                     id: ccPlayBtn
                                     readonly property bool playing: ccWindow.activePlayer ? !!ccWindow.activePlayer.isPlaying : false
-                                    width: playing ? 48 : 42
-                                    height: 42
-                                    radius: playA.pressed ? 10 : (playing ? 13 : 21)
+                                    width: 44
+                                    height: 44
+                                    radius: playA.pressed ? 10 : (playing ? 13 : 22)
                                     color: Theme.tertiary
                                     scale: playA.pressed ? 0.92 : (playA.containsMouse ? 1.05 : 1.0)
                                     anchors.verticalCenter: parent.verticalCenter
 
-                                    Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                                     Behavior on radius { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                                     Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 

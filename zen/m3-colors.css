@@ -1,18 +1,18 @@
-/* Auto-generated Material Design 3 Expressive colors for Zen Browser (scheme-content, dark) */
+/* Auto-generated Material Design 3 Expressive colors for Zen Browser (scheme-tonal-spot, dark) */
 :root {
-    --m3-surface: #141317;
-    --m3-surface-container-low: #1c1b1f;
-    --m3-surface-container: #211f23;
-    --m3-surface-container-high: #2b292d;
-    --m3-surface-container-highest: #363438;
-    --m3-primary: #d0bdfd;
-    --m3-on-primary: #36275c;
-    --m3-primary-container: #594981;
-    --m3-on-primary-container: #f9f1ff;
-    --m3-secondary-container: #4f485f;
-    --m3-on-secondary-container: #eee3ff;
-    --m3-tertiary-container: #7a3f5e;
-    --m3-on-surface: #e6e1e6;
-    --m3-on-surface-variant: #cac4d0;
-    --m3-outline-variant: #49454f;
+    --m3-surface: #111318;
+    --m3-surface-container-low: #1a1b20;
+    --m3-surface-container: #1e1f25;
+    --m3-surface-container-high: #282a2f;
+    --m3-surface-container-highest: #33353a;
+    --m3-primary: #adc6ff;
+    --m3-on-primary: #102f60;
+    --m3-primary-container: #2b4678;
+    --m3-on-primary-container: #d8e2ff;
+    --m3-secondary-container: #3f4759;
+    --m3-on-secondary-container: #dbe2f9;
+    --m3-tertiary-container: #244c5e;
+    --m3-on-surface: #e2e2e9;
+    --m3-on-surface-variant: #c4c6d0;
+    --m3-outline-variant: #44474f;
 }
