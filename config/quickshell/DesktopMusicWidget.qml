@@ -63,6 +63,11 @@ PanelWindow {
         lyricsRevealAnim.start()
     }
 
+    readonly property string liveTrackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
+    onLiveTrackTitleChanged: {
+        if (liveTrackTitle !== "") syncTrackCache()
+    }
+
     function applyPendingTrack() {
         if (pendingTitle !== "") displayedTitle = pendingTitle
         if (pendingArtist !== "") displayedArtist = pendingArtist
@@ -78,7 +83,7 @@ PanelWindow {
         const art = activePlayer.trackArtUrl || ""
         if (t === "") return
 
-        // First track on startup: populate immediately without exit slide
+        // First track on startup: populate immediately
         if (displayedTitle === "") {
             displayedTitle = t
             displayedArtist = a
@@ -92,84 +97,77 @@ PanelWindow {
             return
         }
 
-        // Same track — just keep album art/artist updated if they arrived slightly after title
+        // Same track: update late-arriving artist/art without re-animating
         if (t === pendingTitle) {
-            if (a !== "") { pendingArtist = a; if (!trackSwapAnim.running) displayedArtist = a }
-            if (alb !== "") { pendingAlbum = alb; if (!trackSwapAnim.running) displayedAlbum = alb }
-            if (art !== "") { pendingArtUrl = art; if (!trackSwapAnim.running) displayedArtUrl = art }
+            if (a !== "") { pendingArtist = a; if (!trackExitAnim.running) displayedArtist = a }
+            if (alb !== "") { pendingAlbum = alb; if (!trackExitAnim.running) displayedAlbum = alb }
+            if (art !== "") { pendingArtUrl = art; if (!trackExitAnim.running) displayedArtUrl = art }
             fetchLyricsForCurrent()
             return
         }
 
-        // New track! Queue pending metadata and run smooth 2-phase M3 Shared Axis X exit -> swap -> enter!
+        // New track! Hold old track visible during exit glide, swap while invisible, then glide new track in!
         pendingTitle = t
         pendingArtist = a
         pendingAlbum = alb
         pendingArtUrl = art
         fetchLyricsForCurrent()
-        trackSwapAnim.restart()
+
+        trackEnterAnim.stop()
+        if (!trackExitAnim.running) {
+            trackExitAnim.restart()
+        }
     }
 
-    // Two-phase Material Design 3 Expressive Shared Axis X Track Transition (zero abrupt cut, zero backjump!)
-    SequentialAnimation {
-        id: trackSwapAnim
-
-        // Phase 1: Old track glides smoothly out in skip direction
-        ParallelAnimation {
-            NumberAnimation {
-                target: musicWin; property: "stageX"
-                to: -musicWin.skipDir * 44
-                duration: 150; easing.type: Easing.InCubic
-            }
-            NumberAnimation {
-                target: musicWin; property: "stageScale"
-                to: 0.90
-                duration: 150; easing.type: Easing.InCubic
-            }
-            NumberAnimation {
-                target: musicWin; property: "stageOpacity"
-                to: 0.0
-                duration: 135; easing.type: Easing.InCubic
-            }
+    // Phase 1: Old track glides smoothly out (explicit from/to so QtQuick 6 ALWAYS animates!)
+    ParallelAnimation {
+        id: trackExitAnim
+        NumberAnimation {
+            target: musicWin; property: "stageX"
+            from: 0; to: -musicWin.skipDir * 56
+            duration: 165; easing.type: Easing.InCubic
         }
-
-        // Midpoint swap while invisible + position on incoming edge
-        ScriptAction {
-            script: {
-                musicWin.applyPendingTrack()
-                musicWin.stageX = musicWin.skipDir * 48
-                musicWin.stageScale = 0.90
-                musicWin.stageOpacity = 0.0
-            }
+        NumberAnimation {
+            target: musicWin; property: "stageScale"
+            from: 1.0; to: 0.88
+            duration: 165; easing.type: Easing.InCubic
         }
-
-        // Phase 2: New track glides smoothly in (M3 Emphasized Decelerate, zero overshoot)
-        ParallelAnimation {
-            NumberAnimation {
-                target: musicWin; property: "stageX"
-                to: 0
-                duration: 340; easing.type: Easing.OutQuint
-            }
-            NumberAnimation {
-                target: musicWin; property: "stageScale"
-                to: 1.0
-                duration: 340; easing.type: Easing.OutQuint
-            }
-            NumberAnimation {
-                target: musicWin; property: "stageOpacity"
-                to: 1.0
-                duration: 280; easing.type: Easing.OutCubic
-            }
+        NumberAnimation {
+            target: musicWin; property: "stageOpacity"
+            from: 1.0; to: 0.0
+            duration: 145; easing.type: Easing.InCubic
         }
+        onFinished: {
+            musicWin.applyPendingTrack()
+            trackEnterAnim.restart()
+        }
+    }
 
-        // Reset direction to forward (+1) for natural auto-advance
-        ScriptAction { script: musicWin.skipDir = 1 }
+    // Phase 2: New track glides smoothly in from opposite side (M3 Emphasized Decelerate, zero backjump!)
+    ParallelAnimation {
+        id: trackEnterAnim
+        NumberAnimation {
+            target: musicWin; property: "stageX"
+            from: musicWin.skipDir * 64; to: 0
+            duration: 360; easing.type: Easing.OutQuint
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageScale"
+            from: 0.88; to: 1.0
+            duration: 360; easing.type: Easing.OutQuint
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageOpacity"
+            from: 0.0; to: 1.0
+            duration: 300; easing.type: Easing.OutCubic
+        }
+        onFinished: musicWin.skipDir = 1
     }
 
     ParallelAnimation {
         id: lyricsRevealAnim
-        NumberAnimation { target: musicWin; property: "lyricsLiftY"; to: 0; duration: 360; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "lyricsOpacity"; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 14; to: 0; duration: 360; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 0.0; to: 1.0; duration: 320; easing.type: Easing.OutCubic }
     }
 
     property bool animShown: false
@@ -273,6 +271,13 @@ PanelWindow {
             musicWin.livePos = 0
             musicWin.syncTrackCache()
         }
+        function onPostTrackChanged() {
+            musicWin.livePos = 0
+            musicWin.syncTrackCache()
+        }
+        function onMetadataChanged() {
+            musicWin.syncTrackCache()
+        }
         function onTrackArtistChanged() {
             musicWin.syncTrackCache()
         }
@@ -280,7 +285,7 @@ PanelWindow {
             if (musicWin.activePlayer && (musicWin.activePlayer.trackArtUrl || "") !== "") {
                 const art = musicWin.activePlayer.trackArtUrl
                 musicWin.pendingArtUrl = art
-                if (!trackSwapAnim.running) musicWin.displayedArtUrl = art
+                if (!trackExitAnim.running) musicWin.displayedArtUrl = art
             }
         }
         function onPositionChanged() {
@@ -340,6 +345,9 @@ PanelWindow {
         property int iconSize: 20
         signal triggered()
 
+        Layout.preferredWidth: btnSize
+        Layout.preferredHeight: btnSize
+        Layout.alignment: Qt.AlignVCenter
         width: btnSize
         height: btnSize
         radius: dmbA.pressed ? 10 : (dmbA.containsMouse ? 13 : btnSize / 2)
@@ -407,8 +415,8 @@ PanelWindow {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 22
-            spacing: 22
+            anchors.margins: 24
+            spacing: 24
 
             // ═══════════════════════════════════════════════════
             // LEFT COLUMN: Source Pill + Cover Art + Title + Wavy Scrubber + Controls
@@ -416,7 +424,7 @@ PanelWindow {
             ColumnLayout {
                 Layout.preferredWidth: 360
                 Layout.fillHeight: true
-                spacing: 12
+                spacing: 0
 
                 // Source App Badge + Live Mini Wave
                 RowLayout {
@@ -487,21 +495,25 @@ PanelWindow {
                     }
                 }
 
+                Item { Layout.fillHeight: true; Layout.minimumHeight: 8; Layout.maximumHeight: 16 }
+
                 // Clipped M3 Expressive Shared Axis X Stage (Album Art + Track Title + Artist glide together!)
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 264
+                    Layout.preferredHeight: 244
                     clip: true
 
                     ColumnLayout {
                         anchors.fill: parent
-                        spacing: 12
+                        spacing: 10
 
-                        // Hero Album Cover Art (210x210, ExtraLarge 24px)
+                        // Hero Album Cover Art (192x192, ExtraLarge 24px)
                         Rectangle {
                             Layout.alignment: Qt.AlignHCenter
-                            width: 210
-                            height: 210
+                            Layout.preferredWidth: 192
+                            Layout.preferredHeight: 192
+                            width: 192
+                            height: 192
                             radius: 24
                             color: Theme.alpha(Theme.primaryContainer, 0.55)
                             border.width: 1
@@ -561,30 +573,33 @@ PanelWindow {
                     }
                 }
 
+                Item { Layout.fillHeight: true; Layout.minimumHeight: 8; Layout.maximumHeight: 14 }
+
                 // Large Material Design 3 Expressive Wavy Audio Scrubber
                 M3WavyScrubber {
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
                     player: musicWin.activePlayer
                     activeColor: Theme.primary
                     inactiveColor: Theme.alpha(Theme.fgSurfaceVariant, 0.28)
                     textColor: Theme.fgSurfaceVariant
                     activeAnimation: musicWin.animShown
                     showTimestamps: true
-                    trackBoxHeight: 32
+                    trackBoxHeight: 28
                     strokeW: 4.5
                     maxWaveAmp: 3.6
                     wavelength: 38.0
                     thumbBaseW: 5.0
-                    thumbBaseH: 24.0
+                    thumbBaseH: 22.0
                     timeFontSize: 12
                 }
 
-                // Expressive M3 Large Transport Row (-10s · Prev · Hero Play/Pause Squircle · Next · +10s)
+                Item { Layout.preferredHeight: 12 }
+
+                // Expressive M3 Large Transport Row (-10s · Prev · 76x76 Hero Play/Pause · Next · +10s)
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    spacing: 10
+                    Layout.preferredHeight: 76
+                    spacing: 12
 
                     Item { Layout.fillWidth: true }
 
