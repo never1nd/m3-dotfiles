@@ -30,6 +30,7 @@ Item {
     property double anchorPos: 0
     property double anchorMs: Date.now()
     property double currentPos: 0
+    property double resetShieldUntilMs: 0
     property bool dragging: false
     property real dragRatio: 0
 
@@ -45,17 +46,19 @@ Item {
         anchorPos = 0
         anchorMs = Date.now()
         currentPos = 0
+        resetShieldUntilMs = Date.now() + 1200
         waveCanvas.requestPaint()
     }
 
     function syncFromPlayer(force) {
         if (!player || dragging || holdAtZero) return
-        // Never let spurious MPRIS position spikes jump the handle to the end while paused!
+        // Never let spurious MPRIS position spikes jump the handle while paused!
         if (!force && !isPlaying) return
         const p = player.position
         if (typeof p === "number" && !isNaN(p) && p >= 0) {
-            // Ignore bogus microsecond/overflow values exceeding trackLen + 2s
             if (hasKnownLength && p > trackLen + 2.0) return
+            // For 1.2s after a track switch, ignore stale old-track position packets (> 3s)!
+            if (Date.now() < resetShieldUntilMs && p > 3.0) return
             if (force || Math.abs(p - currentPos) > 1.8) {
                 setAnchor(p)
             }

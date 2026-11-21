@@ -40,22 +40,32 @@ PanelWindow {
 
     onActivePlayerChanged: syncTrackCache()
 
-    // Debounce brief 50-150ms Stopped/Paused dips during Chromium track skips so Play/Pause & wave never flicker!
+    // Keep Play/Pause button & wavy scrubber rock-steady while YouTube buffers a skipped track!
+    property bool skipBuffering: false
     readonly property bool rawPlaying: activePlayer !== null && !!activePlayer.isPlaying
     property bool isActuallyPlaying: rawPlaying
     onRawPlayingChanged: {
         if (rawPlaying) {
             pauseDebounceTimer.stop()
             isActuallyPlaying = true
-        } else {
+        } else if (!skipBuffering) {
             pauseDebounceTimer.restart()
         }
     }
     Timer {
         id: pauseDebounceTimer
-        interval: 220
+        interval: 240
         repeat: false
-        onTriggered: musicWin.isActuallyPlaying = musicWin.rawPlaying
+        onTriggered: if (!musicWin.skipBuffering) musicWin.isActuallyPlaying = musicWin.rawPlaying
+    }
+    Timer {
+        id: skipBufferShield
+        interval: 1600
+        repeat: false
+        onTriggered: {
+            musicWin.skipBuffering = false
+            musicWin.isActuallyPlaying = musicWin.rawPlaying
+        }
     }
 
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
@@ -91,15 +101,13 @@ PanelWindow {
         lyricsRevealAnim.start()
     }
 
+    // Called ONLY once the NEW track title has actually arrived from MPRIS (never slides back to the same track!)
     function beginTrackExit(dir) {
         skipDir = dir || 1
         oldArtUrlBeforeSkip = displayedArtUrl
-        // Clear stale pendingArtUrl if it still belongs to the old track so we never reuse old art on Prev/Next!
         if (pendingArtUrl === displayedArtUrl) pendingArtUrl = ""
-        // Immediately reset scrubber & livePos to 0:00 (zero 0.5s lag at old song position!)
         livePos = 0
         if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
-        // Smoothly glide old lyrics out in sync with the track slide-out
         if (lyricsLines.length > 0) {
             lyricsRevealAnim.stop()
             lyricsExitAnim.restart()
@@ -114,6 +122,8 @@ PanelWindow {
 
     function finishSwapAndEnter() {
         swapWaitTimer.stop()
+        skipBufferShield.stop()
+        skipBuffering = false
         if (pendingTitle !== "") displayedTitle = pendingTitle
         if (pendingArtist !== "") displayedArtist = pendingArtist
         displayedAlbum = pendingAlbum
@@ -122,6 +132,8 @@ PanelWindow {
         } else if (liveArtUrl !== "" && liveArtUrl !== oldArtUrlBeforeSkip) {
             displayedArtUrl = liveArtUrl
         }
+        livePos = 0
+        if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
         swapPhase = "entering"
         slideInAnim.restart()
     }
@@ -764,7 +776,9 @@ PanelWindow {
                         iconSize: 27
                         onTriggered: {
                             if (musicWin.activePlayer) {
-                                musicWin.beginTrackExit(-1)
+                                musicWin.skipDir = -1
+                                musicWin.skipBuffering = true
+                                skipBufferShield.restart()
                                 musicWin.activePlayer.previous()
                             }
                         }
@@ -819,7 +833,7 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: if (musicWin.activePlayer) musicWin.activePlayer.togglePlaying()
+                            onClicked: if (musicWin.activePlayer) { musicWin.skipBuffering = false; skipBufferShield.stop(); pauseDebounceTimer.stop(); musicWin.isActuallyPlaying = !musicWin.isActuallyPlaying; musicWin.activePlayer.togglePlaying() }
                         }
                     }
 
@@ -829,7 +843,9 @@ PanelWindow {
                         iconSize: 27
                         onTriggered: {
                             if (musicWin.activePlayer) {
-                                musicWin.beginTrackExit(1)
+                                musicWin.skipDir = 1
+                                musicWin.skipBuffering = true
+                                skipBufferShield.restart()
                                 musicWin.activePlayer.next()
                             }
                         }
