@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_PKGS=1
 INSTALL_GAMING=0
-CLEAN_NOCTALIA=0
+CLEAN_NOCTALIA=1
 KEEP_DISPLAY=1
 TARGET_PROFILE="violet"
 DRY_RUN=0
@@ -18,7 +18,7 @@ Material Design 3 Expressive (CachyOS + Niri) Installer
 
 Опции:
   --gaming           Дополнительно установить игровой стек CachyOS (Proton, UMU, GameMode, MangoHud, Gamescope)
-  --clean-noctalia   Удалить cachyos-niri-noctalia / noctalia, если установлены
+  --keep-noctalia    Не удалять Noctalia (по умолчанию Noctalia удаляется автоматически)
   --no-packages      Пропустить установку пакетов pacman (только развернуть конфиги и темы)
   --overwrite-display Перезаписать ~/.config/niri/cfg/display.kdl конфигом из репо (осторожно на ноутбуках!)
   --profile NAME     Стартовый профиль: violet | blue | forest | peach (по умолчанию: violet)
@@ -31,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --gaming) INSTALL_GAMING=1 ;;
         --clean-noctalia) CLEAN_NOCTALIA=1 ;;
+        --keep-noctalia) CLEAN_NOCTALIA=0 ;;
         --no-packages) INSTALL_PKGS=0 ;;
         --overwrite-display) KEEP_DISPLAY=0 ;;
         --profile) TARGET_PROFILE="${2:-violet}"; shift ;;
@@ -58,15 +59,17 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     sudo -v
 fi
 
-# 1. Optional Noctalia cleanup
+# 1. Remove Noctalia & legacy shell clutter by default (use --keep-noctalia to skip)
 if [[ "$CLEAN_NOCTALIA" -eq 1 ]]; then
-    echo "==> [1/8] Removing Noctalia if installed..."
-    for pkg in cachyos-niri-noctalia noctalia-shell noctalia; do
+    echo "==> [1/8] Removing Noctalia & legacy clutter if installed..."
+    run pkill -x waybar 2>/dev/null || true
+    run pkill -x swaync 2>/dev/null || true
+    for pkg in cachyos-niri-noctalia noctalia-shell noctalia noctalia-qs; do
         if pacman -Qi "$pkg" >/dev/null 2>&1; then
-            run sudo pacman -Rns --noconfirm "$pkg" || true
+            run sudo pacman -Rns --noconfirm "$pkg" || sudo pacman -Rdd --noconfirm "$pkg" || true
         fi
     done
-    run rm -rf "$HOME/.config/noctalia" "$HOME/.cache/noctalia"
+    run rm -rf "$HOME/.config/noctalia" "$HOME/.cache/noctalia" "$HOME/.local/share/noctalia" "$HOME/.config/quickshell/noctalia"*
 fi
 
 # 2. Core packages

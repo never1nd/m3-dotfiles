@@ -19,7 +19,7 @@ cd ~/m3-dotfiles
 
 Полезные флаги:
 - `./install.sh --gaming` — сразу поставить и игровой стек CachyOS (`proton-cachyos-slr`, `umu-launcher`, `gamemode`, `mangohud`, `gamescope`, `lib32-libpulse`, `game-devices-udev`).
-- `./install.sh --clean-noctalia` — предварительно удалить старую оболочку Noctalia, если она стоит.
+- По умолчанию `./install.sh` **сам удаляет Noctalia** (`cachyos-niri-noctalia`, `noctalia-shell`, `noctalia`, её конфиги и кэши) и отключает `swaync`. Если нужно оставить Noctalia, добавь флаг `--keep-noctalia`.
 - `./install.sh --profile blue` — сразу активировать нужный профиль (`violet` / `blue` / `forest` / `peach`).
 - `./install.sh --dry-run` — посмотреть план установки без изменений.
 
