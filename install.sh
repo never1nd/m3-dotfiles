@@ -8,6 +8,7 @@ CLEAN_NOCTALIA=1
 KEEP_DISPLAY=1
 TARGET_PROFILE="violet"
 DRY_RUN=0
+APPS_MODE="ask"
 
 usage() {
     cat <<'EOF'
@@ -22,6 +23,8 @@ Material Design 3 Expressive (CachyOS + Niri) Installer
   --no-packages      Пропустить установку пакетов pacman (только развернуть конфиги и темы)
   --overwrite-display Перезаписать ~/.config/niri/cfg/display.kdl конфигом из репо (осторожно на ноутбуках!)
   --profile NAME     Стартовый профиль: violet | blue | forest | peach (по умолчанию: violet)
+  --all-apps         Автоматически установить все приложения из apps.json без вопроса
+  --no-apps          Пропустить вопрос об установке доп. приложений
   --dry-run          Показать шаги без внесения изменений
   -h, --help         Показать справку
 EOF
@@ -35,6 +38,8 @@ while [[ $# -gt 0 ]]; do
         --no-packages) INSTALL_PKGS=0 ;;
         --overwrite-display) KEEP_DISPLAY=0 ;;
         --profile) TARGET_PROFILE="${2:-violet}"; shift ;;
+        --all-apps) APPS_MODE="all" ;;
+        --no-apps) APPS_MODE="skip" ;;
         --dry-run) DRY_RUN=1 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Неизвестная опция: $1"; usage; exit 1 ;;
@@ -327,6 +332,14 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     fi
 else
     echo "[dry-run] m3-profile $TARGET_PROFILE"
+fi
+
+# 9. Optional interactive selection of user desktop apps (apps.json)
+if [[ "$APPS_MODE" != "skip" && -x "$REPO_DIR/install-apps.sh" ]]; then
+    APP_ARGS=()
+    [[ "$APPS_MODE" == "all" ]] && APP_ARGS+=(--all)
+    [[ "$DRY_RUN" -eq 1 ]] && APP_ARGS+=(--dry-run)
+    "$REPO_DIR/install-apps.sh" "${APP_ARGS[@]}"
 fi
 
 echo ""

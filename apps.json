@@ -1,0 +1,113 @@
+[
+  {
+    "id": "zen-browser",
+    "name": "Zen Browser",
+    "desc": "Браузер (с темой M3 userChrome.css)",
+    "method": "pacman",
+    "packages": [
+      "zen-browser-bin"
+    ],
+    "default": true
+  },
+  {
+    "id": "ayugram",
+    "name": "AyuGram Desktop",
+    "desc": "Telegram-клиент (+ шрифт Roboto Flex и тема M3)",
+    "method": "pacman",
+    "packages": [
+      "ayugram-desktop"
+    ],
+    "post": "ayugram_wrapper",
+    "default": true
+  },
+  {
+    "id": "vscodium",
+    "name": "VSCodium",
+    "desc": "Редактор кода (VS Code без телеметрии)",
+    "method": "pacman",
+    "packages": [
+      "vscodium"
+    ],
+    "default": true
+  },
+  {
+    "id": "vesktop",
+    "name": "Vesktop",
+    "desc": "Discord-клиент с Vencord и Wayland",
+    "method": "pacman",
+    "packages": [
+      "vesktop-bin"
+    ],
+    "default": true
+  },
+  {
+    "id": "pear-desktop",
+    "name": "Pear Desktop",
+    "desc": "YouTube Music клиент с плагинами и MPRIS",
+    "method": "pacman",
+    "packages": [
+      "pear-desktop"
+    ],
+    "default": true
+  },
+  {
+    "id": "steam",
+    "name": "Steam",
+    "desc": "Игровой клиент Steam",
+    "method": "pacman",
+    "packages": [
+      "steam"
+    ],
+    "default": true
+  },
+  {
+    "id": "gaming-stack",
+    "name": "Игровой стек CachyOS",
+    "desc": "Proton-CachyOS, UMU, GameMode, MangoHud, Gamescope, 32-bit звук",
+    "method": "custom",
+    "post": "gaming_stack",
+    "default": false
+  },
+  {
+    "id": "hydralauncher",
+    "name": "Hydra Launcher",
+    "desc": "Игровой лаунчер (AppImage, свежий релиз GitHub)",
+    "method": "custom",
+    "post": "hydralauncher",
+    "default": false
+  },
+  {
+    "id": "nuvio",
+    "name": "Nuvio",
+    "desc": "Медиа-стриминг (AppImage, свежий релиз GitHub)",
+    "method": "custom",
+    "post": "nuvio",
+    "default": false
+  },
+  {
+    "id": "termius",
+    "name": "Termius",
+    "desc": "SSH-клиент (официальный .deb -> /opt/Termius)",
+    "method": "custom",
+    "post": "termius",
+    "default": false
+  },
+  {
+    "id": "keqdroid",
+    "name": "KeqDroid",
+    "desc": "VPN-клиент (AUR keqdroid-bin)",
+    "method": "custom",
+    "post": "keqdroid",
+    "default": false
+  },
+  {
+    "id": "waifu2x",
+    "name": "waifu2x-ncnn-vulkan",
+    "desc": "AI-апскейлер изображений/обоев на GPU Vulkan",
+    "method": "pacman",
+    "packages": [
+      "waifu2x-ncnn-vulkan"
+    ],
+    "default": false
+  }
+]
