@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
 # Launch interactive Kitty strictly on Wayland bottom layer in the bottom-right quarter,
-# with transparent background seated neatly inside Quickshell's 28px M3 Expressive rounded card!
+# aligned dynamically with Quickshell's DesktopTerminalCard (right: 40, width: 880, top: 556) on any screen width!
 if pgrep -f 'kitten panel.*kitty-desktop' >/dev/null 2>&1; then
     exit 0
 fi
+
+SCREEN_W="$(niri msg -j outputs 2>/dev/null | python3 -c '
+import sys, json
+try:
+    outs = json.load(sys.stdin)
+    for o in outs.values():
+        log = o.get("logical") or {}
+        if log.get("width"):
+            print(int(log["width"]))
+            break
+except Exception:
+    pass
+' || true)"
+[[ "$SCREEN_W" =~ ^[0-9]+$ ]] || SCREEN_W=1920
+MARGIN_LEFT=$(( SCREEN_W - 40 - 880 + 12 ))
+[ "$MARGIN_LEFT" -lt 16 ] && MARGIN_LEFT=16
+
 exec kitten panel \
     --edge=none \
     --layer=bottom \
@@ -12,7 +29,7 @@ exec kitten panel \
     --exclusive-zone=0 \
     --columns=856px \
     --lines=460px \
-    --margin-left=1012 \
+    --margin-left="$MARGIN_LEFT" \
     --margin-top=572 \
     -o include=themes/m3-desktop-override.conf \
     -o hide_window_decorations=yes \
