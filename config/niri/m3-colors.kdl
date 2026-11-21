@@ -1,31 +1,31 @@
-// Auto-generated Material Design 3 Expressive tokens (scheme-tonal-spot, dark)
+// Auto-generated Material Design 3 Expressive tokens (scheme-content, dark)
 layout {
     focus-ring {
-        active-color   "#adc6ff"
-        inactive-color "#33353a"
+        active-color   "#d0bdfd"
+        inactive-color "#363438"
         urgent-color   "#ffb4ab"
     }
 
     border {
-        active-color   "#adc6ff"
-        inactive-color "#33353a"
+        active-color   "#d0bdfd"
+        inactive-color "#363438"
         urgent-color   "#ffb4ab"
     }
 
     tab-indicator {
-        active-color   "#adc6ff"
-        inactive-color "#3f4759"
+        active-color   "#d0bdfd"
+        inactive-color "#4f485f"
         urgent-color   "#ffb4ab"
     }
 
     insert-hint {
-        color "#adc6ff66"
+        color "#d0bdfd66"
     }
 }
 
 overview {
     zoom 0.54
-    backdrop-color "#0c0e13"
+    backdrop-color "#0f0e11"
     workspace-shadow {
         softness 48
         spread 6
@@ -36,7 +36,7 @@ overview {
 
 recent-windows {
     highlight {
-        active-color "#adc6ffff"
+        active-color "#d0bdfdff"
         urgent-color "#ffb4abff"
     }
 }

@@ -356,34 +356,48 @@ PanelWindow {
                         onTriggered: if (mpWindow.activePlayer) mpWindow.activePlayer.previous()
                     }
 
-                    // Hero M3 Expressive Play/Pause Button (Wide Squircle Playing <-> Pill Circle Paused)
+                    // Hero M3 Expressive Play/Pause Button (64x48 Squircle Playing <-> 48x48 Perfect Circle Paused, zero RowLayout drift!)
                     Rectangle {
+                        id: mpHeroBtn
                         readonly property bool playing: mpWindow.activePlayer ? !!mpWindow.activePlayer.isPlaying : false
-                        width: playing ? 58 : 48
-                        height: 48
-                        radius: heroPlayA.pressed ? 12 : (playing ? 16 : 24)
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: playing ? 64 : 48
+                        Layout.preferredHeight: 48
+                        radius: heroPlayA.pressed ? 12 : (playing ? 15 : 24)
                         color: Theme.tertiary
-                        scale: heroPlayA.pressed ? 0.92 : (heroPlayA.containsMouse ? 1.06 : 1.0)
+                        scale: heroPlayA.pressed ? 0.92 : (heroPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on width { SpringAnimation { spring: 5.0; damping: 0.34 } }
-                        Behavior on radius { SpringAnimation { spring: 5.0; damping: 0.34 } }
-                        Behavior on scale { SpringAnimation { spring: 6.0; damping: 0.38 } }
+                        Behavior on Layout.preferredWidth { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
+                        Behavior on radius { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                        Behavior on color { ColorAnimation { duration: 180 } }
 
                         Row {
                             anchors.centerIn: parent
-                            visible: parent.playing
                             spacing: 5.5
+                            opacity: mpHeroBtn.playing ? 1.0 : 0.0
+                            scale: mpHeroBtn.playing ? 1.0 : 0.55
+                            rotation: mpHeroBtn.playing ? 0 : -28
+                            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                            Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                            Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                             Rectangle { width: 5.5; height: 18; radius: 2.75; color: Theme.fgTertiary }
                             Rectangle { width: 5.5; height: 18; radius: 2.75; color: Theme.fgTertiary }
                         }
 
                         M3Icon {
                             anchors.centerIn: parent
-                            visible: !parent.playing
+                            anchors.horizontalCenterOffset: 1.0
                             name: "play_arrow"
                             size: 26
                             filled: true
                             color: Theme.fgTertiary
+                            opacity: mpHeroBtn.playing ? 0.0 : 1.0
+                            scale: mpHeroBtn.playing ? 0.55 : 1.0
+                            rotation: mpHeroBtn.playing ? 28 : 0
+                            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                            Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                            Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                         }
 
                         MouseArea {

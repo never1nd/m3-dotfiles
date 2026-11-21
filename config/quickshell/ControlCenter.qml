@@ -657,32 +657,45 @@ PanelWindow {
                                 }
 
                                 Rectangle {
+                                    id: ccPlayBtn
                                     readonly property bool playing: ccWindow.activePlayer ? !!ccWindow.activePlayer.isPlaying : false
-                                    width: 42
+                                    width: playing ? 48 : 42
                                     height: 42
                                     radius: playA.pressed ? 10 : (playing ? 13 : 21)
                                     color: Theme.tertiary
-                                    scale: playA.pressed ? 0.92 : (playA.containsMouse ? 1.06 : 1.0)
+                                    scale: playA.pressed ? 0.92 : (playA.containsMouse ? 1.05 : 1.0)
                                     anchors.verticalCenter: parent.verticalCenter
 
-                                    Behavior on radius { SpringAnimation { spring: 5.2; damping: 0.34 } }
-                                    Behavior on scale { SpringAnimation { spring: 6.0; damping: 0.38 } }
+                                    Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                                    Behavior on radius { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                                    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
                                     Row {
                                         anchors.centerIn: parent
-                                        visible: parent.playing
                                         spacing: 4.5
+                                        opacity: ccPlayBtn.playing ? 1.0 : 0.0
+                                        scale: ccPlayBtn.playing ? 1.0 : 0.55
+                                        rotation: ccPlayBtn.playing ? 0 : -28
+                                        Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
+                                        Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutQuint } }
+                                        Behavior on rotation { NumberAnimation { duration: 250; easing.type: Easing.OutQuint } }
                                         Rectangle { width: 4.5; height: 15; radius: 2.25; color: Theme.fgTertiary }
                                         Rectangle { width: 4.5; height: 15; radius: 2.25; color: Theme.fgTertiary }
                                     }
 
                                     M3Icon {
                                         anchors.centerIn: parent
-                                        visible: !parent.playing
+                                        anchors.horizontalCenterOffset: 1.0
                                         name: "play_arrow"
                                         size: 22
                                         filled: true
                                         color: Theme.fgTertiary
+                                        opacity: ccPlayBtn.playing ? 0.0 : 1.0
+                                        scale: ccPlayBtn.playing ? 0.55 : 1.0
+                                        rotation: ccPlayBtn.playing ? 28 : 0
+                                        Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
+                                        Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutQuint } }
+                                        Behavior on rotation { NumberAnimation { duration: 250; easing.type: Easing.OutQuint } }
                                     }
 
                                     MouseArea {

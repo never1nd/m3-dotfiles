@@ -490,37 +490,49 @@ PanelWindow {
                         }
                     }
 
-                    // Hero M3 Expressive Morphing Play/Pause Button (Squircle 24px Playing <-> Full Pill 34px Paused!)
+                    // Hero M3 Expressive Morphing Play/Pause Button (108x68 Squircle Playing <-> 68x68 Perfect Circle Paused!)
                     Rectangle {
-                        Layout.preferredWidth: 108
+                        id: deskHeroBtn
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: musicWin.isActuallyPlaying ? 108 : 68
                         Layout.preferredHeight: 68
-                        width: 108
-                        height: 68
-                        radius: dPlayA.pressed ? 16 : (musicWin.isActuallyPlaying ? 24 : 34)
+                        radius: dPlayA.pressed ? 16 : (musicWin.isActuallyPlaying ? 20 : 34)
                         color: Theme.primary
                         scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on radius { NumberAnimation { duration: 240; easing.type: Easing.OutQuint } }
+                        Behavior on Layout.preferredWidth { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
+                        Behavior on radius { NumberAnimation { duration: 280; easing.type: Easing.OutQuint } }
                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         Behavior on color { ColorAnimation { duration: 180 } }
 
+                        // Smooth M3 Expressive morphing Pause bars
                         Row {
                             anchors.centerIn: parent
-                            visible: musicWin.isActuallyPlaying
-                            opacity: musicWin.isActuallyPlaying ? 1.0 : 0.0
                             spacing: 8
+                            opacity: musicWin.isActuallyPlaying ? 1.0 : 0.0
+                            scale: musicWin.isActuallyPlaying ? 1.0 : 0.55
+                            rotation: musicWin.isActuallyPlaying ? 0 : -28
+                            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                            Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                            Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                             Rectangle { width: 9; height: 28; radius: 4.5; color: Theme.fgPrimary }
                             Rectangle { width: 9; height: 28; radius: 4.5; color: Theme.fgPrimary }
                         }
 
+                        // Smooth M3 Expressive morphing Play triangle (optically centered +1.5px)
                         M3Icon {
                             anchors.centerIn: parent
-                            visible: !musicWin.isActuallyPlaying
-                            opacity: musicWin.isActuallyPlaying ? 0.0 : 1.0
+                            anchors.horizontalCenterOffset: 1.5
                             name: "play_arrow"
-                            size: 40
+                            size: 38
                             filled: true
                             color: Theme.fgPrimary
+                            opacity: musicWin.isActuallyPlaying ? 0.0 : 1.0
+                            scale: musicWin.isActuallyPlaying ? 0.55 : 1.0
+                            rotation: musicWin.isActuallyPlaying ? 28 : 0
+                            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                            Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                            Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                         }
 
                         MouseArea {
