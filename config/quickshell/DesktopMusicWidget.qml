@@ -129,10 +129,10 @@ PanelWindow {
         // Native Qt6 StackView replace (instant, zero 280ms delay, zero FBO stall, M3Motion BezierSpline!)
         if (isFirst || trackStack.depth === 0) {
             trackStack.replace(null, trackSlideComp, { trackTitle: t, trackArtist: a, artUrl: art }, StackView.Immediate)
+            skipDir = 1
         } else {
             trackStack.replace(trackSlideComp, { trackTitle: t, trackArtist: a, artUrl: art })
         }
-        skipDir = 1
     }
 
     ParallelAnimation {
@@ -566,6 +566,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 244
                     clip: true
+                    onBusyChanged: if (!busy) musicWin.skipDir = 1
 
                     replaceEnter: Transition {
                         M3Anim {
