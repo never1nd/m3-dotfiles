@@ -16,32 +16,21 @@ PanelWindow {
     id: musicWin
 
     readonly property var playersList: Mpris.players.values || []
-    property string lastPlayerId: ""
     readonly property var activePlayer: {
         if (!playersList || playersList.length === 0) return null
         // 1) Prefer any actively playing player
         for (let i = 0; i < playersList.length; i++) {
             if (playersList[i] && playersList[i].isPlaying) return playersList[i]
         }
-        // 2) Keep the previously active player while paused or switching tracks
-        if (lastPlayerId !== "") {
-            for (let i = 0; i < playersList.length; i++) {
-                if (playersList[i] && (playersList[i].identity || "") === lastPlayerId) return playersList[i]
-            }
-        }
-        // 3) Otherwise pick first available player with metadata (or first running music service)
+        // 2) Keep player with track metadata while paused or switching tracks
         for (let i = 0; i < playersList.length; i++) {
             if (playersList[i] && (playersList[i].trackTitle || "") !== "") return playersList[i]
         }
+        // 3) Fallback to first running music service
         return playersList[0] || null
     }
 
-    onActivePlayerChanged: {
-        if (activePlayer && (activePlayer.identity || "") !== "") {
-            lastPlayerId = activePlayer.identity
-        }
-        syncTrackCache()
-    }
+    onActivePlayerChanged: syncTrackCache()
 
     readonly property bool isActuallyPlaying: activePlayer !== null && !!activePlayer.isPlaying
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
