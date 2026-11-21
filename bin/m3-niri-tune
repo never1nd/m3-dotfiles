@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+import argparse, json, pathlib, re
+
+CFG = pathlib.Path.home() / ".config/niri/cfg"
+LAYOUT = CFG / "layout.kdl"
+RULES = CFG / "rules.kdl"
+
+def read_vals():
+    lt = LAYOUT.read_text()
+    rt = RULES.read_text()
+    gaps = int(re.search(r'gaps\s+(\d+)', lt).group(1))
+    ring = int(re.search(r'focus-ring\s*\{\s*width\s+(\d+)', lt).group(1))
+    rad = int(re.search(r'geometry-corner-radius\s+(\d+)', rt).group(1))
+    return {"gaps": gaps, "ring": ring, "radius": rad}
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", choices=["get", "set"])
+    ap.add_argument("--gaps", type=int)
+    ap.add_argument("--ring", type=int)
+    ap.add_argument("--radius", type=int)
+    a = ap.parse_args()
+    if a.cmd == "get":
+        print(json.dumps(read_vals()))
+        return
+    if a.gaps is not None:
+        lt = LAYOUT.read_text()
+        LAYOUT.write_text(re.sub(r'(gaps\s+)\d+', rf'\g<1>{a.gaps}', lt, count=1))
+    if a.ring is not None:
+        lt = LAYOUT.read_text()
+        LAYOUT.write_text(re.sub(r'(focus-ring\s*\{\s*width\s+)\d+', rf'\g<1>{a.ring}', lt, count=1))
+    if a.radius is not None:
+        rt = RULES.read_text()
+        RULES.write_text(re.sub(r'(geometry-corner-radius\s+)\d+', rf'\g<1>{a.radius}', rt, count=1))
+    print(json.dumps(read_vals()))
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,21 @@
+singleton Theme 1.0 Theme.qml
+singleton NiriState 1.0 NiriState.qml
+M3Icon 1.0 M3Icon.qml
+M3Text 1.0 M3Text.qml
+M3ExpressiveSlider 1.0 M3ExpressiveSlider.qml
+M3WavyScrubber 1.0 M3WavyScrubber.qml
+DesktopTerminalCard 1.0 DesktopTerminalCard.qml
+DesktopMusicWidget 1.0 DesktopMusicWidget.qml
+TopBar 1.0 TopBar.qml
+ControlCenter 1.0 ControlCenter.qml
+MediaPopup 1.0 MediaPopup.qml
+CalendarPopup 1.0 CalendarPopup.qml
+SystemMonitorPopup 1.0 SystemMonitorPopup.qml
+ClipboardPopup 1.0 ClipboardPopup.qml
+ScreenshotPopup 1.0 ScreenshotPopup.qml
+VolumePopup 1.0 VolumePopup.qml
+SettingsWindow 1.0 SettingsWindow.qml
+NetworkPopup 1.0 NetworkPopup.qml
+CustomizationPopup 1.0 CustomizationPopup.qml
+PowerPopup 1.0 PowerPopup.qml
+NotificationsOverlay 1.0 NotificationsOverlay.qml

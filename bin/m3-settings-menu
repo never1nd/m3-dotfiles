@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+if pgrep -x rofi >/dev/null 2>&1; then
+    pkill -x rofi
+    exit 0
+fi
+
+choice=$(printf "Обои и динамическая палитра M3\nПереключить Тёмная / Светлая тема\nВыбрать алгоритм палитры HCT\nЦентр управления и уведомления\nИстория буфера обмена\nМикшер звука (Pavucontrol)\nНастройки Qt6 (qt6ct)\nЗаблокировать экран\nМеню питания и сессии" | \
+    rofi -dmenu -i -p "M3 Expressive" -theme ~/.config/rofi/m3-expressive.rasi)
+
+case "$choice" in
+    "Обои"*)        __HOME__/.local/bin/m3-wallpaper-picker ;;
+    "Переключить"*) __HOME__/.local/bin/m3-toggle-mode ;;
+    "Выбрать"*)     __HOME__/.local/bin/m3-scheme-picker ;;
+    "Центр"*)       qs ipc call shell toggleControlCenter ;;
+    "История"*)     __HOME__/.local/bin/m3-clipboard ;;
+    "Микшер"*)      pavucontrol & ;;
+    "Настройки"*)   qt6ct & ;;
+    "Заблокировать"*) hyprlock ;;
+    "Меню"*)        __HOME__/.local/bin/m3-power-menu ;;
+esac

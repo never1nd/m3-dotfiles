@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+STATE_T="${XDG_RUNTIME_DIR:-/tmp}/m3-nightlight-temp"
+cmd="${1:-status}"
+temp="${2:-$(cat "$STATE_T" 2>/dev/null || echo 4000)}"
+
+case "$cmd" in
+    status)
+        if pgrep -x wlsunset >/dev/null 2>&1; then
+            echo "on:$temp"
+        else
+            echo "off:$temp"
+        fi
+        ;;
+    toggle)
+        if pgrep -x wlsunset >/dev/null 2>&1; then
+            pkill -x wlsunset 2>/dev/null || true
+            echo "off:$temp"
+        else
+            echo "$temp" > "$STATE_T"
+            niri msg action spawn -- wlsunset -T 6500 -t "$temp" >/dev/null 2>&1 || nohup wlsunset -T 6500 -t "$temp" >/dev/null 2>&1 &
+            echo "on:$temp"
+        fi
+        ;;
+    set)
+        echo "$temp" > "$STATE_T"
+        pkill -x wlsunset 2>/dev/null || true
+        sleep 0.1
+        niri msg action spawn -- wlsunset -T 6500 -t "$temp" >/dev/null 2>&1 || nohup wlsunset -T 6500 -t "$temp" >/dev/null 2>&1 &
+        echo "on:$temp"
+        ;;
+esac

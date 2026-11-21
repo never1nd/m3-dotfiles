@@ -1,0 +1,217 @@
+@import url("m3-tokens.css");
+
+/* Material Design 3 Expressive Overrides for GTK3 / GTK4 / Libadwaita
+ * Strict v34.0.0 Shape Scale:
+ *   Full pill (9999px): buttons, search bars, entries, switches, nav rail active indicators
+ *   Large (16px): nested cards, list rows
+ *   LargeIncreased (20px): top-level cards, boxed lists
+ *   ExtraLarge (28px): popovers, menus, dialogs
+ */
+
+window,
+.background {
+    background-color: @m3_surface;
+    color: @m3_on_surface;
+}
+
+headerbar,
+.titlebar {
+    background-color: @m3_surface_container_low;
+    color: @m3_on_surface;
+    border-bottom: 1px solid alpha(@m3_outline_variant, 0.28);
+    box-shadow: none;
+    padding: 4px 12px;
+}
+
+headerbar:backdrop,
+.titlebar:backdrop {
+    background-color: @m3_surface_dim;
+}
+
+/* Expressive Full-Pill Buttons + Shape Morphing on active/checked */
+button {
+    border-radius: 9999px;
+    transition: background-color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0),
+                color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0),
+                border-radius 220ms cubic-bezier(0.34, 1.35, 0.64, 1.0);
+}
+
+button.suggested-action {
+    background-color: @m3_primary;
+    color: @m3_on_primary;
+    font-weight: 700;
+}
+
+button.suggested-action:hover {
+    background-color: shade(@m3_primary, 1.06);
+}
+
+button.destructive-action {
+    background-color: @m3_error_container;
+    color: @m3_on_error_container;
+    font-weight: 700;
+}
+
+/* M3 Expressive Toggle Morph: pill -> Medium squircle (12px) when checked */
+button:checked,
+togglebutton:checked {
+    background-color: @m3_primary_container;
+    color: @m3_on_primary_container;
+    border-radius: 12px;
+}
+
+/* Circular M3 Tonal Window Controls */
+windowcontrols button,
+headerbar button.titlebutton {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    margin: 0 3px;
+    border-radius: 9999px;
+    background-color: @m3_surface_container_high;
+    color: @m3_on_surface_variant;
+}
+
+windowcontrols button:hover,
+headerbar button.titlebutton:hover {
+    background-color: @m3_secondary_container;
+    color: @m3_on_secondary_container;
+}
+
+windowcontrols button.close:hover,
+headerbar button.titlebutton.close:hover {
+    background-color: @m3_error_container;
+    color: @m3_on_error_container;
+}
+
+/* M3 Expressive Full-Pill Entries & Search Bars */
+entry,
+searchbar entry,
+searchentry {
+    border-radius: 9999px;
+    background-color: @m3_surface_container_highest;
+    color: @m3_on_surface;
+    border: 1px solid alpha(@m3_outline_variant, 0.35);
+    padding: 6px 16px;
+}
+
+entry:focus-within,
+entry:focus {
+    border: 2px solid @m3_primary;
+    outline: none;
+}
+
+/* M3 Expressive ExtraLarge (28px) Popovers & Menus with Optical Inner Radius (18px) */
+popover > contents,
+popover.background,
+menu,
+.context-menu {
+    background-color: @m3_surface_container_high;
+    color: @m3_on_surface;
+    border-radius: 28px;
+    border: 1px solid alpha(@m3_outline_variant, 0.35);
+    padding: 10px;
+}
+
+popover modelbutton,
+menu menuitem {
+    border-radius: 18px;
+    padding: 8px 14px;
+    margin: 2px 0;
+}
+
+popover modelbutton:hover,
+menu menuitem:hover {
+    background-color: @m3_primary_container;
+    color: @m3_on_primary_container;
+}
+
+/* Expressive Navigation Sidebar & Full-Pill Active Indicators */
+.navigation-sidebar,
+placessidebar {
+    background-color: @m3_surface_container_low;
+    padding: 8px;
+}
+
+.navigation-sidebar row,
+placessidebar row {
+    border-radius: 9999px;
+    margin: 2px 6px;
+    padding: 8px 14px;
+}
+
+.navigation-sidebar row:selected,
+placessidebar row:selected {
+    background-color: @m3_secondary_container;
+    color: @m3_on_secondary_container;
+    font-weight: 700;
+}
+
+/* M3 Expressive LargeIncreased Cards (20px) */
+.card,
+list.boxed-list {
+    background-color: @m3_surface_container;
+    border-radius: 20px;
+    border: 1px solid alpha(@m3_outline_variant, 0.25);
+}
+
+/* M3 Expressive Switches */
+switch {
+    border-radius: 9999px;
+    background-color: @m3_surface_container_highest;
+    border: 2px solid @m3_outline;
+    min-width: 50px;
+    min-height: 28px;
+}
+
+switch:checked {
+    background-color: @m3_primary;
+    border-color: @m3_primary;
+}
+
+switch slider {
+    border-radius: 9999px;
+    background-color: @m3_on_surface_variant;
+    margin: 3px;
+}
+
+switch:checked slider {
+    background-color: @m3_on_primary;
+}
+
+/* M3 Expressive Thick Sliders */
+scale trough {
+    min-height: 10px;
+    border-radius: 9999px;
+    background-color: @m3_surface_container_highest;
+}
+
+scale highlight {
+    min-height: 10px;
+    border-radius: 9999px;
+    background-color: @m3_primary;
+}
+
+scale slider {
+    border-radius: 9999px;
+    background-color: @m3_primary;
+}
+
+/* Pill Scrollbars */
+scrollbar slider {
+    border-radius: 9999px;
+    background-color: alpha(@m3_outline, 0.50);
+}
+
+scrollbar slider:hover {
+    background-color: @m3_primary;
+}
+
+/* Tooltips (Medium 12px) */
+tooltip,
+tooltip.background {
+    background-color: @m3_inverse_surface;
+    color: @m3_inverse_on_surface;
+    border-radius: 12px;
+    padding: 4px 10px;
+}

@@ -1,0 +1,9 @@
+// ────────────── Material Design 3 Expressive Native Wayland Stack ──────────────
+spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+spawn-at-startup "awww-daemon"
+spawn-at-startup "qs"
+spawn-at-startup "swayosd-server" "--top-margin" "0.09" "--duration" "1600"
+spawn-at-startup "hypridle"
+spawn-sh-at-startup "wl-paste --type text --watch cliphist store"
+spawn-sh-at-startup "wl-paste --type image --watch cliphist store"
+spawn-at-startup "__HOME__/.local/bin/m3-desktop-kitty"

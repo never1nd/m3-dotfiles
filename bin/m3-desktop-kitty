@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Launch interactive Kitty strictly on Wayland bottom layer in the bottom-right quarter,
+# with transparent background seated neatly inside Quickshell's 28px M3 Expressive rounded card!
+if pgrep -f 'kitten panel.*kitty-desktop' >/dev/null 2>&1; then
+    exit 0
+fi
+exec kitten panel \
+    --edge=none \
+    --layer=bottom \
+    --class=kitty-desktop \
+    --focus-policy=on-demand \
+    --exclusive-zone=0 \
+    --columns=856px \
+    --lines=460px \
+    --margin-left=1012 \
+    --margin-top=572 \
+    -o include=themes/m3-desktop-override.conf \
+    -o hide_window_decorations=yes \
+    -o background_opacity=0.0 \
+    -o inactive_text_alpha=1.0 \
+    -o window_padding_width=10 \
+    fish

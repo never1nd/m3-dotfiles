@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+STATE="$HOME/.local/state/m3-mode"
+cur="dark"
+[ -f "$STATE" ] && cur="$(tr -d '[:space:]' < "$STATE")"
+if [ "$cur" = "dark" ]; then
+    next="light"
+else
+    next="dark"
+fi
+exec __HOME__/.local/bin/m3-apply-wallpaper --mode "$next" --no-wallpaper

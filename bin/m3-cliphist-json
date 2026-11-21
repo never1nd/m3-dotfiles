@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+THUMB_DIR = pathlib.Path("/tmp/m3-clip-thumbs")
+THUMB_DIR.mkdir(parents=True, exist_ok=True)
+
+def main():
+    try:
+        out = subprocess.check_output(["cliphist", "list"], text=True, errors="replace")
+    except Exception:
+        print("[]")
+        return
+
+    items = []
+    for raw in out.splitlines()[:45]:
+        if "\t" not in raw:
+            continue
+        cid, preview = raw.split("\t", 1)
+        is_img = bool(re.match(r"^\[\[ binary data .* (png|jpg|jpeg|webp|bmp|gif)", preview.strip(), re.I))
+        thumb = ""
+        meta = ""
+        if is_img:
+            m = re.search(r"binary data (.*?)\]\]", preview)
+            meta = m.group(1) if m else "Изображение"
+            tp = THUMB_DIR / f"{cid}.png"
+            if not tp.exists():
+                try:
+                    data = subprocess.check_output(["cliphist", "decode", cid], timeout=1.5)
+                    tp.write_bytes(data)
+                except Exception:
+                    pass
+            if tp.exists() and tp.stat().st_size > 0:
+                thumb = f"file://{tp}"
+        items.append({
+            "id": cid,
+            "raw": raw,
+            "text": preview.strip(),
+            "is_image": is_img,
+            "thumb": thumb,
+            "meta": meta,
+        })
+    print(json.dumps(items, ensure_ascii=False))
+
+if __name__ == "__main__":
+    main()

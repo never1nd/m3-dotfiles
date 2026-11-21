@@ -1,0 +1,32 @@
+{
+  "id": "peach",
+  "name": "Оранжевый",
+  "accent_preview": "#ffb691",
+  "wallpaper": "__HOME__/Изображения/Wallpapers/orihime-mirrored.png",
+  "color_source": "#e07b42",
+  "scheme": "scheme-tonal-spot",
+  "mode": "dark",
+  "icon_base": "Tela-circle-orange",
+  "tg_style": "peach",
+  "fastfetch_logo": "__HOME__/.config/fastfetch/orihterm.png",
+  "palette_overrides": {
+    "dark": {
+      "tertiary": "#f2c98a",
+      "on_tertiary": "#472e04",
+      "tertiary_container": "#5e431a",
+      "on_tertiary_container": "#ffe4b8",
+      "tertiary_fixed": "#ffe4b8",
+      "tertiary_fixed_dim": "#f2c98a",
+      "on_tertiary_fixed": "#2a1900",
+      "on_tertiary_fixed_variant": "#5e431a"
+    },
+    "light": {
+      "tertiary": "#7c5718",
+      "on_tertiary": "#ffffff",
+      "tertiary_container": "#ffdea8",
+      "on_tertiary_container": "#281800",
+      "tertiary_fixed": "#ffdea8",
+      "tertiary_fixed_dim": "#f2c98a"
+    }
+  }
+}

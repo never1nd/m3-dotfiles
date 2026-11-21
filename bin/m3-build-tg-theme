@@ -1,0 +1,649 @@
+#!/usr/bin/env python3
+"""Build a complete Material Design 3 Expressive (MD3E) High-Readability
+.tdesktop-theme ZIP (colors.tdesktop-theme + calm M3-tinted wallpaper background.jpg).
+
+Supports all 4 profile styles via colors.json `_tg_style`:
+- "sakura":       Tender evening sakura blossom (dark, dusty rose-plum)
+- "slate-blue":   Calm neutral KeqDroid slate-blue (dark, steel-cornflower)
+- "peach":        Warm velvety peach & tangerine (dark, soft apricot-cocoa)
+- "forest-light": Sunlit morning forest & sage (light, airy woodland moss)
+"""
+import colorsys
+import json
+import pathlib
+import re
+import shutil
+import subprocess
+import tempfile
+import zipfile
+
+HOME = pathlib.Path.home()
+NIGHT_PAL = HOME / ".config/matugen/tdesktop-night-base.txt"
+DAY_PAL = HOME / ".config/matugen/tdesktop-day-base.txt"
+COLORS_JSON = HOME / ".config/quickshell/colors.json"
+OUT_THEME = HOME / "Изображения/M3-Expressive.tdesktop-theme"
+
+
+def hex_to_rgb(h: str):
+    h = h.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def rgb_to_hex(r, g, b, a=""):
+    return f"#{max(0, min(255, int(round(r)))):02x}{max(0, min(255, int(round(g)))):02x}{max(0, min(255, int(round(b)))):02x}{a}"
+
+
+def mix(h1: str, h2: str, t: float, a=""):
+    r1, g1, b1 = hex_to_rgb(h1)
+    r2, g2, b2 = hex_to_rgb(h2)
+    return rgb_to_hex(r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t, a)
+
+
+def rel_luminance(h: str) -> float:
+    def lin(v):
+        v /= 255.0
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = hex_to_rgb(h)
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def contrast_ratio(h1: str, h2: str) -> float:
+    l1, l2 = rel_luminance(h1), rel_luminance(h2)
+    hi, lo = max(l1, l2), min(l1, l2)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def ensure_contrast(fg: str, bg: str, min_ratio: float = 4.6, prefer_light: bool = True) -> str:
+    if contrast_ratio(fg, bg) >= min_ratio:
+        return fg
+    target = "#ffffff" if prefer_light else "#101c13"
+    for step in range(1, 41):
+        cand = mix(fg, target, step / 40.0)
+        if contrast_ratio(cand, bg) >= min_ratio:
+            return cand
+    return target
+
+
+def boost_chroma(h: str, sat_mult: float = 1.0, min_sat: float = 0.08, max_sat: float = 0.30, light_delta: float = 0.0) -> str:
+    r, g, b = [v / 255.0 for v in hex_to_rgb(h)]
+    hue, lum, sat = colorsys.rgb_to_hls(r, g, b)
+    ns = min(max_sat, max(min_sat, sat * sat_mult))
+    nl = max(0.03, min(0.97, lum + light_delta))
+    nr, ng, nb = colorsys.hls_to_rgb(hue, nl, ns)
+    return rgb_to_hex(nr * 255, ng * 255, nb * 255)
+
+
+def ensure_bg_for_white(bg: str, min_ratio: float = 5.2) -> str:
+    if contrast_ratio("#ffffff", bg) >= min_ratio:
+        return bg
+    for step in range(1, 41):
+        cand = mix(bg, "#0a100c", step / 40.0)
+        if contrast_ratio("#ffffff", cand) >= min_ratio:
+            return cand
+    return "#2b3b57"
+
+
+def build_forest_light(c: dict):
+    base_txt = DAY_PAL.read_text() if DAY_PAL.exists() else NIGHT_PAL.read_text()
+
+    # Airy sunlit forest light surfaces (M3 Light Tonal Elevation Ladder)
+    s_rail    = "#e5efe2"   # L0: cool morning-mist folder rail
+    s_list    = "#f4f9f1"   # L1: bright sunlit chat list
+    s_bar     = "#ebf3e8"   # L2: soft sage header / compose bar
+    s_bubble  = "#ffffff"   # L3: crisp white incoming message bubble
+    s_hover   = "#e2ede0"   # L4: gentle sage hover
+    s_ripple  = "#d1e5cf"   # L5: active ripple
+
+    s_out_bg  = "#d2ebd3"   # gentle sunlit birch-leaf outgoing bubble
+    s_out_sel = "#bce0be"
+    s_act_bg  = "#cde6ce"   # soft sage active selected chat
+
+    accent_bg       = ensure_bg_for_white(c.get("primary", "#35693f"), 5.8)
+    accent_bg_over  = ensure_bg_for_white(mix(accent_bg, "#1b4424", 0.16), 6.8)
+    muted_badge_bg  = ensure_bg_for_white("#5e7262", 5.2)
+    muted_badge_ovr = ensure_bg_for_white("#4e6152", 6.2)
+
+    fg_primary   = "#142117"  # deep pine ink (>15:1 on white/list!)
+    fg_secondary = "#3e5242"  # calm woodland moss (>7.5:1 AAA on white/list!)
+    fg_icon      = "#3c5241"
+    fg_link_in   = ensure_contrast(accent_bg, s_bubble, 6.0, False)
+    fg_link_out  = ensure_contrast("#23552d", s_out_bg, 6.2, False)
+    fg_out_date  = ensure_contrast("#2f5436", s_out_bg, 5.8, False)
+    divider_hex  = "#b8cbb9"
+    divider_pane = divider_hex + "aa"
+    divider_row  = divider_hex + "66"
+
+    seed_accent = accent_bg
+    pr, pg, pb = hex_to_rgb(seed_accent)
+    p_h, _, p_s = colorsys.rgb_to_hls(pr / 255.0, pg / 255.0, pb / 255.0)
+
+    def remap_blue(hex_str: str) -> str:
+        raw = hex_str.lstrip("#").lower()
+        alpha = raw[6:8] if len(raw) == 8 else ""
+        r, g, b = int(raw[0:2], 16) / 255.0, int(raw[2:4], 16) / 255.0, int(raw[4:6], 16) / 255.0
+        h, l, s = colorsys.rgb_to_hls(r, g, b)
+        if 0.48 <= h <= 0.68 and s > 0.05:
+            nh, ns = p_h, min(0.45, max(s * 0.60, p_s * 0.55))
+            nr, ng, nb = colorsys.hls_to_rgb(nh, l, ns)
+            return rgb_to_hex(nr * 255, ng * 255, nb * 255, alpha)
+        return "#" + raw
+
+    ov = {
+        "shadowFg": divider_pane,
+        "menuSeparatorFg": divider_hex,
+        "dialogsDividerFg": divider_row,
+        "inputBorderFg": "#9cb39e",
+        "activeLineFg": accent_bg,
+        "placeholderFg": fg_secondary,
+        "placeholderFgActive": fg_secondary,
+
+        "windowBg": s_list,
+        "windowFg": fg_primary,
+        "windowBgOver": s_hover,
+        "windowBgRipple": s_ripple,
+        "windowFgOver": fg_primary,
+        "windowSubTextFg": fg_secondary,
+        "windowSubTextFgOver": fg_primary,
+        "windowBoldFg": fg_primary,
+        "windowBoldFgOver": fg_primary,
+        "windowBgActive": accent_bg,
+        "windowFgActive": "#ffffff",
+        "windowActiveTextFg": fg_link_in,
+
+        "titleBg": s_rail,
+        "titleBgActive": s_rail,
+        "titleShadow": divider_pane,
+        "titleFg": fg_secondary,
+        "titleFgActive": fg_primary,
+        "topBarBg": s_bar,
+
+        "sideBarBg": s_rail,
+        "sideBarBgActive": s_act_bg,
+        "sideBarBgRipple": s_ripple,
+        "sideBarTextFg": fg_secondary,
+        "sideBarTextFgActive": fg_primary,
+        "sideBarIconFg": fg_icon,
+        "sideBarIconFgActive": accent_bg,
+        "sideBarBadgeBg": accent_bg,
+        "sideBarBadgeBgMuted": muted_badge_bg,
+        "sideBarBadgeFg": "#ffffff",
+
+        "dialogsBg": s_list,
+        "dialogsBgOver": s_hover,
+        "dialogsBgRipple": s_ripple,
+        "dialogsBgActive": s_act_bg,
+        "dialogsMenuIconFg": fg_icon,
+        "dialogsMenuIconFgOver": accent_bg,
+        "dialogsNameFg": fg_primary,
+        "dialogsNameFgOver": fg_primary,
+        "dialogsNameFgActive": fg_primary,
+        "dialogsChatIconFg": accent_bg,
+        "dialogsChatIconFgOver": accent_bg,
+        "dialogsChatIconFgActive": fg_primary,
+        "dialogsDateFg": fg_secondary,
+        "dialogsDateFgOver": fg_primary,
+        "dialogsDateFgActive": fg_out_date,
+        "dialogsTextFg": fg_secondary,
+        "dialogsTextFgOver": fg_primary,
+        "dialogsTextFgActive": fg_primary,
+        "dialogsTextFgService": fg_link_in,
+        "dialogsTextFgServiceOver": fg_link_in,
+        "dialogsTextFgServiceActive": fg_link_out,
+        "dialogsDraftFg": "#a8442a",
+        "dialogsDraftFgOver": "#a8442a",
+        "dialogsDraftFgActive": "#8f321b",
+        "dialogsVerifiedIconBg": accent_bg,
+        "dialogsVerifiedIconFg": "#ffffff",
+        "dialogsVerifiedIconBgActive": accent_bg,
+        "dialogsVerifiedIconFgActive": "#ffffff",
+        "dialogsSendingIconFg": fg_secondary,
+        "dialogsSentIconFg": accent_bg,
+        "dialogsSentIconFgOver": accent_bg,
+        "dialogsSentIconFgActive": fg_link_out,
+        "dialogsUnreadBg": accent_bg,
+        "dialogsUnreadBgOver": accent_bg_over,
+        "dialogsUnreadBgMuted": muted_badge_bg,
+        "dialogsUnreadBgMutedOver": muted_badge_ovr,
+        "dialogsUnreadFg": "#ffffff",
+        "dialogsUnreadFgOver": "#ffffff",
+        "dialogsUnreadBgActive": accent_bg,
+        "dialogsUnreadBgMutedActive": muted_badge_bg,
+        "dialogsUnreadFgActive": "#ffffff",
+        "dialogsOnlineBadgeFg": "#2f7d42",
+        "dialogsOnlineBadgeFgActive": "#215c30",
+        "dialogsPinnedIconFg": accent_bg,
+        "dialogsPinnedIconFgOver": accent_bg,
+        "dialogsPinnedIconFgActive": fg_link_out,
+
+        "filterInputInactiveBg": "#e3eee0",
+        "filterInputActiveBg": "#ffffff",
+        "filterInputBorderFg": accent_bg,
+        "searchedBarBg": s_bar,
+        "searchedBarFg": fg_primary,
+
+        "boxBg": "#ffffff",
+        "boxTextFg": fg_primary,
+        "boxTitleFg": fg_primary,
+        "boxTitleAdditionalFg": fg_secondary,
+        "boxTitleCloseFg": fg_icon,
+        "boxTitleCloseFgOver": accent_bg,
+        "boxSearchBg": "#eef5eb",
+        "menuBg": "#ffffff",
+        "menuBgOver": s_hover,
+        "menuBgRipple": s_ripple,
+        "menuIconFg": fg_icon,
+        "menuIconFgOver": accent_bg,
+        "mainMenuBg": s_list,
+        "mainMenuCoverBg": accent_bg,
+        "mainMenuCoverFg": "#ffffff",
+
+        "activeButtonBg": accent_bg,
+        "activeButtonBgOver": accent_bg_over,
+        "activeButtonBgRipple": "#214b2a",
+        "activeButtonFg": "#ffffff",
+        "activeButtonFgOver": "#ffffff",
+        "lightButtonBg": "#ffffff",
+        "lightButtonBgOver": s_hover,
+        "lightButtonBgRipple": s_ripple,
+        "lightButtonFg": fg_link_in,
+        "lightButtonFgOver": fg_primary,
+
+        "msgInBg": s_bubble,
+        "msgInBgSelected": "#dceddb",
+        "msgOutBg": s_out_bg,
+        "msgOutBgSelected": s_out_sel,
+        "msgInShadow": "#00000000",
+        "msgInShadowSelected": "#00000000",
+        "msgOutShadow": "#00000000",
+        "msgOutShadowSelected": "#00000000",
+        "historyTextInFg": fg_primary,
+        "historyTextInFgSelected": fg_primary,
+        "historyTextOutFg": fg_primary,
+        "historyTextOutFgSelected": fg_primary,
+        "historyLinkInFg": fg_link_in,
+        "historyLinkOutFg": fg_link_out,
+        "msgInDateFg": fg_secondary,
+        "msgOutDateFg": fg_out_date,
+        "historyOutIconFg": accent_bg,
+        "historyOutIconFgSelected": fg_link_out,
+        "msgInServiceFg": fg_link_in,
+        "msgOutServiceFg": fg_link_out,
+        "msgInReplyBarColor": accent_bg,
+        "msgOutReplyBarColor": fg_link_out,
+        "msgInMonoFg": "#255732",
+        "msgOutMonoFg": "#1b4526",
+        "msgFileInBg": accent_bg,
+        "msgFileInBgOver": accent_bg_over,
+        "msgFileOutBg": accent_bg,
+        "msgFileOutBgOver": accent_bg_over,
+        "msgWaveformInActive": accent_bg,
+        "msgWaveformInInactive": "#b5c9b7",
+        "msgWaveformOutActive": fg_link_out,
+        "msgWaveformOutInactive": "#97b89b",
+
+        "msgServiceBg": "#e4efe1e6",
+        "msgServiceBgSelected": "#cde3cbe6",
+        "msgServiceFg": fg_primary,
+        "historyUnreadBarBg": s_bar,
+        "historyUnreadBarBorder": divider_pane,
+        "historyUnreadBarFg": fg_primary,
+
+        "historyComposeAreaBg": s_bar,
+        "historyComposeAreaFg": fg_primary,
+        "historyComposeAreaFgService": fg_secondary,
+        "historyComposeIconFg": fg_icon,
+        "historyComposeIconFgOver": accent_bg,
+        "historySendIconFg": accent_bg,
+        "historySendIconFgOver": accent_bg_over,
+        "historyPinnedBg": s_bar,
+        "historyReplyBg": s_bar,
+        "historyReplyIconFg": accent_bg,
+        "historyReplyCancelFg": fg_icon,
+        "historyToDownBg": "#ffffff",
+        "historyToDownBgOver": s_hover,
+        "historyToDownFg": fg_primary,
+        "historyToDownFgOver": accent_bg,
+        "historyToDownShadow": "#14211724",
+
+        "mediaPlayerBg": s_bar,
+        "mediaPlayerActiveFg": accent_bg,
+        "mediaPlayerInactiveFg": "#c6d9c7",
+        "emojiPanBg": s_bar,
+        "emojiPanCategories": s_rail,
+        "emojiPanHeaderFg": fg_secondary,
+        "emojiIconFg": fg_icon,
+        "emojiIconFgActive": accent_bg,
+        "scrollBarBg": "#4c635044",
+        "scrollBarBgOver": "#35693f88",
+        "scrollBg": "#00000000",
+        "scrollBgOver": "#00000000",
+        "toastBg": "#1b2b1ee6",
+        "toastFg": "#ffffff",
+        "tooltipBg": "#1f2e22",
+        "tooltipFg": "#f2f8f0",
+        "tooltipBorderFg": "#1f2e22",
+    }
+
+    return base_txt, ov, remap_blue, "#eaf3e7", 0.80, HOME / "Изображения/M3-Expressive-Forest.tdesktop-theme"
+
+
+def main():
+    if not NIGHT_PAL.exists() or not COLORS_JSON.exists():
+        return
+    c = json.loads(COLORS_JSON.read_text())
+    tg_style = c.get("_tg_style") or (
+        "forest-light" if c.get("_mode") == "light" else
+        ("slate-blue" if c.get("_profile") == "blue" else
+         ("peach" if c.get("_profile") == "peach" else "sakura"))
+    )
+
+    if tg_style == "forest-light":
+        colors_txt, ov, remap_blue, scrim_hex, scrim_alpha, named_out = build_forest_light(c)
+    else:
+        colors_txt = NIGHT_PAL.read_text()
+        if tg_style == "slate-blue":
+            seed_accent = mix(c["primary"], "#adc6ff", 0.35)
+            seed_deep   = mix(c["primary_container"], c["secondary_container"], 0.45)
+            s_rail    = boost_chroma(mix(c["surface_container_lowest"], "#0c0e13", 0.30), 0.95, 0.10, 0.15, 0.0)
+            s_list    = boost_chroma(mix(c["surface_container_low"], c["surface"], 0.20), 0.95, 0.10, 0.15, -0.005)
+            s_bar     = boost_chroma(mix(c["surface_container"], c["surface_container_high"], 0.18), 0.95, 0.10, 0.16, 0.0)
+            s_bubble  = boost_chroma(mix(c["surface_container_high"], c["secondary_container"], 0.16), 0.95, 0.12, 0.18, 0.008)
+            s_hover   = boost_chroma(mix(c["surface_container_highest"], c["secondary_container"], 0.24), 0.95, 0.13, 0.20, 0.010)
+            s_ripple  = boost_chroma(mix(c["surface_container_highest"], c["primary_container"], 0.26), 0.95, 0.16, 0.24, 0.012)
+            mid_tone  = boost_chroma(mix(c["primary_container"], c["secondary_container"], 0.35), 0.85, 0.22, 0.30, -0.010)
+            s_out_bg  = ensure_bg_for_white(mid_tone, 7.8)
+            s_out_sel = ensure_bg_for_white(boost_chroma(mix(s_out_bg, seed_accent, 0.20), 0.90, 0.24, 0.34, 0.02), 5.8)
+            s_act_bg  = ensure_bg_for_white(boost_chroma(mix(c["secondary_container"], c["primary_container"], 0.22), 0.88, 0.18, 0.25, -0.012), 9.0)
+            accent_bg       = ensure_bg_for_white(boost_chroma(mix(mid_tone, seed_accent, 0.25), 0.88, 0.24, 0.32, 0.02), 5.5)
+            accent_bg_over  = ensure_bg_for_white(boost_chroma(mix(accent_bg, seed_accent, 0.16), 0.90, 0.26, 0.35, 0.02), 4.8)
+            muted_badge_bg  = ensure_bg_for_white(boost_chroma(mix(c["surface_container_highest"], c["secondary_container"], 0.35), 0.90, 0.12, 0.18, 0.015), 8.6)
+            muted_badge_ovr = ensure_bg_for_white(boost_chroma(mix(muted_badge_bg, seed_accent, 0.18), 0.90, 0.14, 0.20, 0.025), 6.6)
+            fg_primary     = "#f5f7fc"
+            fg_secondary   = ensure_contrast(mix(c["on_surface_variant"], "#ebf0fa", 0.44), s_bubble, 9.0, True)
+            fg_icon        = ensure_contrast(mix(c["on_surface_variant"], "#ebf0fa", 0.48), s_bar, 10.2, True)
+            fg_link_in     = ensure_contrast(mix(seed_accent, "#edf3ff", 0.22), s_bubble, 10.0, True)
+            fg_link_out    = ensure_contrast(mix(c["primary_fixed"], "#ffffff", 0.28), s_out_bg, 6.8, True)
+            fg_out_date    = ensure_contrast(mix(c["on_primary_container"], "#ffffff", 0.35), s_out_bg, 7.0, True)
+            fg_out_icon    = "#f2f6ff"
+            fg_act_sub     = ensure_contrast(mix(c["on_secondary_container"], "#ffffff", 0.40), s_act_bg, 8.2, True)
+            fg_act_date    = ensure_contrast(mix(c["on_secondary_container"], "#ffffff", 0.25), s_act_bg, 7.6, True)
+            fg_draft       = ensure_contrast(mix(c["tertiary"], "#f5ecff", 0.22), s_list, 10.0, True)
+            fg_on_light    = ensure_contrast(c["on_primary"], seed_accent, 10.5, False)
+            sel_badge_act  = mix(seed_accent, "#ffffff", 0.22)
+            sel_badge_mut  = mix(c["on_surface_variant"], "#edf2fc", 0.25)
+            online_badge   = ensure_contrast(seed_accent, s_list, 7.0, True)
+            mono_in_fg     = ensure_contrast(mix(seed_accent, "#d7e6ff", 0.30), s_bubble, 8.5, True)
+            divider_hex    = boost_chroma(mix(c["outline_variant"], c["secondary_container"], 0.35), 0.90, 0.12, 0.18, 0.02)
+            named_out      = HOME / "Изображения/M3-Expressive-Blue.tdesktop-theme"
+
+        elif tg_style == "peach":
+            seed_accent = mix(c["primary"], c["tertiary"], 0.22)
+            seed_deep   = mix(c["primary_container"], c["secondary_container"], 0.35)
+            s_rail    = boost_chroma(mix(c["surface_container_lowest"], "#120c09", 0.28), 0.92, 0.10, 0.16, -0.005)
+            s_list    = boost_chroma(mix(c["surface_container_low"], c["surface"], 0.22), 0.92, 0.11, 0.17, -0.008)
+            s_bar     = boost_chroma(mix(c["surface_container"], c["surface_container_high"], 0.22), 0.92, 0.12, 0.18, 0.0)
+            s_bubble  = boost_chroma(mix(c["surface_container_high"], c["secondary_container"], 0.18), 0.92, 0.13, 0.19, 0.008)
+            s_hover   = boost_chroma(mix(c["surface_container_highest"], c["secondary_container"], 0.25), 0.92, 0.14, 0.21, 0.010)
+            s_ripple  = boost_chroma(mix(c["surface_container_highest"], c["primary_container"], 0.28), 0.92, 0.16, 0.24, 0.012)
+            mid_tone  = boost_chroma(mix(c["primary_container"], c["secondary_container"], 0.35), 0.82, 0.22, 0.30, -0.012)
+            s_out_bg  = ensure_bg_for_white(mid_tone, 7.6)
+            s_out_sel = ensure_bg_for_white(boost_chroma(mix(s_out_bg, seed_accent, 0.20), 0.88, 0.24, 0.34, 0.02), 5.7)
+            s_act_bg  = ensure_bg_for_white(boost_chroma(mix(mid_tone, s_list, 0.22), 0.84, 0.19, 0.26, -0.012), 8.8)
+            accent_bg       = ensure_bg_for_white(boost_chroma(mix(mid_tone, seed_accent, 0.26), 0.88, 0.26, 0.34, 0.02), 5.4)
+            accent_bg_over  = ensure_bg_for_white(boost_chroma(mix(accent_bg, seed_accent, 0.16), 0.90, 0.28, 0.36, 0.02), 4.8)
+            muted_badge_bg  = ensure_bg_for_white(boost_chroma(mix(c["surface_container_highest"], c["secondary_container"], 0.32), 0.88, 0.12, 0.19, 0.015), 8.5)
+            muted_badge_ovr = ensure_bg_for_white(boost_chroma(mix(muted_badge_bg, seed_accent, 0.18), 0.88, 0.14, 0.22, 0.025), 6.6)
+            fg_primary     = "#fdf7f3"
+            fg_secondary   = ensure_contrast(mix(c["on_surface_variant"], "#fbf0e8", 0.44), s_bubble, 9.0, True)
+            fg_icon        = ensure_contrast(mix(c["on_surface_variant"], "#fbf0e8", 0.48), s_bar, 10.2, True)
+            fg_link_in     = ensure_contrast(mix(seed_accent, "#fff2e8", 0.24), s_bubble, 9.8, True)
+            fg_link_out    = ensure_contrast(mix(c["tertiary"], "#fff6e5", 0.34), s_out_bg, 6.6, True)
+            fg_out_date    = ensure_contrast(mix(c["on_primary_container"], "#ffffff", 0.35), s_out_bg, 6.8, True)
+            fg_out_icon    = "#fff7f0"
+            fg_act_sub     = ensure_contrast(mix(c["on_primary_container"], "#ffffff", 0.42), s_act_bg, 8.2, True)
+            fg_act_date    = ensure_contrast(mix(c["on_primary_container"], "#ffffff", 0.28), s_act_bg, 7.6, True)
+            fg_draft       = ensure_contrast(mix(c["tertiary"], "#fff4dc", 0.18), s_list, 10.2, True)
+            fg_on_light    = ensure_contrast(c["on_primary"], seed_accent, 10.5, False)
+            sel_badge_act  = mix(seed_accent, "#ffffff", 0.24)
+            sel_badge_mut  = mix(c["on_surface_variant"], "#fbf0e8", 0.25)
+            online_badge   = ensure_contrast(c["tertiary"], s_list, 7.0, True)
+            mono_in_fg     = ensure_contrast(c["tertiary"], s_bubble, 7.6, True)
+            divider_hex    = boost_chroma(mix(c["outline_variant"], c["secondary_container"], 0.34), 0.88, 0.12, 0.18, 0.02)
+            named_out      = HOME / "Изображения/M3-Expressive-Peach.tdesktop-theme"
+
+        else:  # sakura
+            seed_accent = mix(c["tertiary"], c["primary"], 0.20)
+            seed_deep   = mix(c["tertiary_container"], c["primary_container"], 0.25)
+            s_rail    = boost_chroma(mix(c["surface_container_lowest"], seed_deep, 0.07), 0.95, 0.08, 0.14, -0.005)
+            s_list    = boost_chroma(mix(c["surface_container_low"], seed_deep, 0.10), 0.95, 0.09, 0.15, -0.012)
+            s_bar     = boost_chroma(mix(c["surface_container"], seed_deep, 0.14), 0.95, 0.10, 0.16, -0.004)
+            s_bubble  = boost_chroma(mix(c["surface_container_high"], seed_deep, 0.18), 0.95, 0.11, 0.17, 0.006)
+            s_hover   = boost_chroma(mix(c["surface_container_highest"], seed_deep, 0.22), 0.95, 0.12, 0.19, 0.008)
+            s_ripple  = boost_chroma(mix(c["surface_container_highest"], seed_deep, 0.32), 0.95, 0.14, 0.22, 0.012)
+            mid_tone  = boost_chroma(mix(seed_deep, c["surface_container_high"], 0.22), 0.88, 0.18, 0.24, -0.015)
+            s_out_bg  = ensure_bg_for_white(mid_tone, 7.2)
+            s_out_sel = ensure_bg_for_white(boost_chroma(mix(s_out_bg, seed_accent, 0.20), 0.90, 0.20, 0.28, 0.02), 5.6)
+            s_act_bg  = ensure_bg_for_white(boost_chroma(mix(mid_tone, s_list, 0.24), 0.88, 0.17, 0.23, -0.015), 8.6)
+            accent_bg       = ensure_bg_for_white(boost_chroma(mix(mid_tone, seed_accent, 0.28), 0.92, 0.22, 0.30, 0.02), 5.3)
+            accent_bg_over  = ensure_bg_for_white(boost_chroma(mix(accent_bg, seed_accent, 0.16), 0.92, 0.24, 0.32, 0.02), 4.7)
+            muted_badge_bg  = ensure_bg_for_white(boost_chroma(mix(c["surface_container_highest"], seed_deep, 0.24), 0.90, 0.12, 0.18, 0.015), 8.5)
+            muted_badge_ovr = ensure_bg_for_white(boost_chroma(mix(muted_badge_bg, seed_accent, 0.18), 0.90, 0.14, 0.20, 0.025), 6.6)
+            fg_primary     = "#fbf6f9"
+            fg_secondary   = ensure_contrast(mix(c["on_surface_variant"], "#faedf4", 0.44), s_bubble, 9.0, True)
+            fg_icon        = ensure_contrast(mix(c["on_surface_variant"], "#faedf4", 0.48), s_bar, 10.2, True)
+            fg_link_in     = ensure_contrast(mix(seed_accent, "#fff0f7", 0.28), s_bubble, 9.8, True)
+            fg_link_out    = ensure_contrast(mix(c["primary"], "#f8f2ff", 0.36), s_out_bg, 6.4, True)
+            fg_out_date    = ensure_contrast(mix(c["on_tertiary_container"], "#ffffff", 0.32), s_out_bg, 6.8, True)
+            fg_out_icon    = "#fff5fa"
+            fg_act_sub     = ensure_contrast(mix(c["on_tertiary_container"], "#ffffff", 0.42), s_act_bg, 8.2, True)
+            fg_act_date    = ensure_contrast(mix(c["on_tertiary_container"], "#ffffff", 0.28), s_act_bg, 7.6, True)
+            fg_draft       = ensure_contrast(mix(c["tertiary"], "#fff0f6", 0.18), s_list, 10.2, True)
+            fg_on_light    = ensure_contrast(c["on_tertiary"], seed_accent, 10.5, False)
+            sel_badge_act  = mix(seed_accent, "#ffffff", 0.26)
+            sel_badge_mut  = mix(c["on_surface_variant"], "#fff2f7", 0.25)
+            online_badge   = ensure_contrast(c["tertiary"], s_list, 6.5, True)
+            mono_in_fg     = ensure_contrast(c["tertiary"], s_bubble, 7.2, True)
+            divider_hex    = boost_chroma(mix(c["outline_variant"], seed_deep, 0.32), 0.88, 0.10, 0.16, 0.02)
+            named_out      = HOME / "Изображения/M3-Expressive-Sakura.tdesktop-theme"
+
+        fg_icon_hover = "#ffffff"
+        pr, pg, pb = hex_to_rgb(seed_accent)
+        p_h, _, p_s = colorsys.rgb_to_hls(pr / 255.0, pg / 255.0, pb / 255.0)
+        sr, sg, sb = hex_to_rgb(seed_deep)
+        s_h, _, s_s = colorsys.rgb_to_hls(sr / 255.0, sg / 255.0, sb / 255.0)
+
+        def remap_blue(hex_str: str) -> str:
+            raw = hex_str.lstrip("#").lower()
+            alpha = raw[6:8] if len(raw) == 8 else ""
+            r, g, b = int(raw[0:2], 16) / 255.0, int(raw[2:4], 16) / 255.0, int(raw[4:6], 16) / 255.0
+            h, l, s = colorsys.rgb_to_hls(r, g, b)
+            if 0.48 <= h <= 0.68 and s > 0.04:
+                if l < 0.25 and s < 0.42:
+                    nh, ns = s_h, min(s * 0.45, max(s_s, 0.10))
+                elif s >= 0.42 or l >= 0.45:
+                    nh, ns = p_h, min(0.70, max(s * 0.72, p_s * 0.65))
+                else:
+                    nh, ns = s_h, min(s * 0.50, 0.16)
+                nr, ng, nb = colorsys.hls_to_rgb(nh, l, ns)
+                return rgb_to_hex(nr * 255, ng * 255, nb * 255, alpha)
+            return "#" + raw
+
+        divider_pane = divider_hex + "78"
+        divider_row  = divider_hex + "4c"
+        input_border = boost_chroma(mix(c["outline_variant"], seed_accent, 0.28), 0.88, 0.12, 0.18, 0.01)
+        peers = [
+            ensure_contrast("#ff8b94", s_bubble, 6.5, True),
+            ensure_contrast("#9be89b", s_bubble, 6.8, True),
+            ensure_contrast("#ffd27d", s_bubble, 7.2, True),
+            ensure_contrast("#8ed0ff", s_bubble, 6.8, True),
+            ensure_contrast("#dfbaff", s_bubble, 7.0, True),
+            ensure_contrast("#ff9bd2", s_bubble, 6.8, True),
+            ensure_contrast("#7de8e0", s_bubble, 7.0, True),
+            ensure_contrast("#ffb27d", s_bubble, 6.8, True),
+        ]
+        ov = {
+            "shadowFg": divider_pane, "windowShadowFg": "#000000cc", "windowShadowFgFallback": s_rail,
+            "menuSeparatorFg": divider_hex, "dialogsDividerFg": divider_row, "boxDividerBg": s_rail,
+            "boxDividerFg": divider_pane, "inputBorderFg": input_border, "activeLineFg": fg_link_in,
+            "activeLineFgError": c["error"], "placeholderFg": fg_secondary, "placeholderFgActive": fg_secondary,
+            "windowBg": s_list, "windowFg": fg_primary, "windowBgOver": s_hover, "windowBgRipple": s_ripple,
+            "windowFgOver": "#ffffff", "windowSubTextFg": fg_secondary, "windowSubTextFgOver": fg_primary,
+            "windowBoldFg": "#ffffff", "windowBoldFgOver": "#ffffff", "windowBgActive": accent_bg,
+            "windowFgActive": "#ffffff", "windowActiveTextFg": fg_link_in,
+            "titleBg": s_rail, "titleBgActive": s_rail, "titleShadow": divider_pane,
+            "titleFg": fg_secondary, "titleFgActive": fg_primary, "topBarBg": s_bar,
+            "sideBarBg": s_rail, "sideBarBgActive": s_act_bg, "sideBarBgRipple": s_hover,
+            "sideBarTextFg": fg_secondary, "sideBarTextFgActive": "#ffffff", "sideBarIconFg": fg_icon,
+            "sideBarIconFgActive": "#ffffff", "sideBarBadgeBg": accent_bg,
+            "sideBarBadgeBgMuted": muted_badge_bg, "sideBarBadgeFg": "#ffffff",
+            "dialogsBg": s_list, "dialogsBgOver": s_hover, "dialogsBgRipple": s_ripple,
+            "dialogsBgActive": s_act_bg, "dialogsMenuIconFg": fg_icon, "dialogsMenuIconFgOver": fg_icon_hover,
+            "dialogsNameFg": fg_primary, "dialogsNameFgOver": "#ffffff", "dialogsNameFgActive": "#ffffff",
+            "dialogsChatIconFg": fg_link_in, "dialogsChatIconFgOver": "#ffffff", "dialogsChatIconFgActive": "#ffffff",
+            "dialogsDateFg": fg_secondary, "dialogsDateFgOver": fg_primary, "dialogsDateFgActive": fg_act_date,
+            "dialogsTextFg": fg_secondary, "dialogsTextFgOver": fg_primary, "dialogsTextFgActive": fg_act_sub,
+            "dialogsTextFgService": fg_link_in, "dialogsTextFgServiceOver": fg_icon_hover,
+            "dialogsTextFgServiceActive": "#ffffff", "dialogsDraftFg": fg_draft, "dialogsDraftFgOver": fg_draft,
+            "dialogsDraftFgActive": fg_link_out, "dialogsVerifiedIconBg": fg_link_in,
+            "dialogsVerifiedIconFg": fg_on_light, "dialogsVerifiedIconBgOver": "#ffffff",
+            "dialogsVerifiedIconFgOver": fg_on_light, "dialogsVerifiedIconBgActive": "#ffffff",
+            "dialogsVerifiedIconFgActive": s_act_bg, "dialogsSendingIconFg": fg_secondary,
+            "dialogsSendingIconFgOver": fg_primary, "dialogsSendingIconFgActive": fg_act_date,
+            "dialogsSentIconFg": fg_link_in, "dialogsSentIconFgOver": fg_icon_hover,
+            "dialogsSentIconFgActive": "#ffffff",
+            "dialogsUnreadBg": accent_bg, "dialogsUnreadBgOver": accent_bg_over,
+            "dialogsUnreadBgMuted": muted_badge_bg, "dialogsUnreadBgMutedOver": muted_badge_ovr,
+            "dialogsUnreadFg": "#ffffff", "dialogsUnreadFgOver": "#ffffff",
+            "dialogsUnreadBgActive": sel_badge_act, "dialogsUnreadBgMutedActive": sel_badge_mut,
+            "dialogsUnreadFgActive": fg_on_light, "dialogsOnlineBadgeFg": online_badge,
+            "dialogsOnlineBadgeFgActive": "#ffffff", "dialogsPinnedIconFg": fg_link_in,
+            "dialogsPinnedIconFgOver": "#ffffff", "dialogsPinnedIconFgActive": "#ffffff",
+            "filterInputInactiveBg": s_hover, "filterInputActiveBg": mix(s_hover, s_act_bg, 0.20),
+            "filterInputBorderFg": fg_link_in, "searchedBarBg": s_bar, "searchedBarFg": fg_primary,
+            "boxBg": s_bubble, "boxTextFg": fg_primary, "boxTitleFg": "#ffffff",
+            "boxTitleAdditionalFg": fg_secondary, "boxTitleCloseFg": fg_icon, "boxTitleCloseFgOver": "#ffffff",
+            "boxSearchBg": s_hover, "menuBg": s_bubble, "menuBgOver": s_hover, "menuBgRipple": s_ripple,
+            "menuIconFg": fg_icon, "menuIconFgOver": "#ffffff", "menuSubmenuArrowFg": fg_secondary,
+            "menuFgDisabled": mix(fg_secondary, s_bubble, 0.45), "mainMenuBg": s_list,
+            "mainMenuCoverBg": s_act_bg, "mainMenuCoverFg": "#ffffff",
+            "mainMenuCloudFg": "#ffffff", "mainMenuCloudBg": accent_bg,
+            "activeButtonBg": accent_bg, "activeButtonBgOver": accent_bg_over,
+            "activeButtonBgRipple": s_act_bg, "activeButtonFg": "#ffffff", "activeButtonFgOver": "#ffffff",
+            "activeButtonSecondaryFg": fg_act_sub, "activeButtonSecondaryFgOver": "#ffffff",
+            "lightButtonBg": s_bubble, "lightButtonBgOver": s_hover, "lightButtonBgRipple": s_ripple,
+            "lightButtonFg": fg_link_in, "lightButtonFgOver": "#ffffff",
+            "outlineButtonBg": s_bubble, "outlineButtonBgOver": s_hover, "outlineButtonBgRipple": s_ripple,
+            "outlineButtonOutlineFg": divider_hex,
+            "attentionButtonFg": ensure_contrast(c["error"], s_bubble, 6.2, True),
+            "attentionButtonFgOver": "#ffdcd8", "attentionButtonBgOver": mix(c["error_container"], s_bubble, 0.45),
+            "checkboxFg": fg_icon, "sliderBgInactive": mix(s_hover, divider_hex, 0.55),
+            "sliderBgActive": fg_link_in, "smallCloseIconFg": fg_icon, "smallCloseIconFgOver": "#ffffff",
+            "msgInBg": s_bubble, "msgInBgSelected": mix(s_bubble, accent_bg, 0.48),
+            "msgOutBg": s_out_bg, "msgOutBgSelected": s_out_sel,
+            "msgInShadow": "#00000000", "msgInShadowSelected": "#00000000",
+            "msgOutShadow": "#00000000", "msgOutShadowSelected": "#00000000",
+            "historyTextInFg": fg_primary, "historyTextInFgSelected": "#ffffff",
+            "historyTextOutFg": "#ffffff", "historyTextOutFgSelected": "#ffffff",
+            "historyLinkInFg": fg_link_in, "historyLinkInFgSelected": "#ffffff",
+            "historyLinkOutFg": fg_link_out, "historyLinkOutFgSelected": "#ffffff",
+            "msgInDateFg": fg_secondary, "msgInDateFgSelected": "#ffffff",
+            "msgOutDateFg": fg_out_date, "msgOutDateFgSelected": "#ffffff",
+            "historyOutIconFg": fg_out_icon, "historyOutIconFgSelected": "#ffffff",
+            "historyIconFgInverted": "#ffffff", "historySendingOutIconFg": fg_out_date,
+            "historySendingInIconFg": fg_secondary, "msgInServiceFg": fg_link_in,
+            "msgInServiceFgSelected": "#ffffff", "msgOutServiceFg": fg_link_out,
+            "msgOutServiceFgSelected": "#ffffff", "msgInReplyBarColor": fg_link_in,
+            "msgInReplyBarSelColor": "#ffffff", "msgOutReplyBarColor": fg_link_out,
+            "msgOutReplyBarSelColor": "#ffffff", "msgInMonoFg": mono_in_fg, "msgOutMonoFg": "#f8f6ff",
+            "mediaInFg": fg_secondary, "mediaInFgSelected": "#ffffff",
+            "mediaOutFg": fg_out_date, "mediaOutFgSelected": "#ffffff",
+            "msgFileInBg": accent_bg, "msgFileInBgOver": accent_bg_over, "msgFileInBgSelected": fg_link_in,
+            "msgFileOutBg": fg_link_in, "msgFileOutBgOver": "#ffffff", "msgFileOutBgSelected": "#ffffff",
+            "msgFile1Bg": accent_bg, "msgFile2Bg": ensure_bg_for_white("#3f7a5a", 5.2),
+            "msgFile3Bg": ensure_bg_for_white("#9c445c", 5.2), "msgFile4Bg": ensure_bg_for_white("#8a662e", 5.2),
+            "msgFileThumbLinkInFg": fg_link_in, "msgFileThumbLinkInFgSelected": "#ffffff",
+            "msgFileThumbLinkOutFg": fg_link_out, "msgFileThumbLinkOutFgSelected": "#ffffff",
+            "historyFileNameInFg": fg_primary, "historyFileNameInFgSelected": "#ffffff",
+            "historyFileNameOutFg": "#ffffff", "historyFileNameOutFgSelected": "#ffffff",
+            "msgWaveformInActive": fg_link_in, "msgWaveformInActiveSelected": "#ffffff",
+            "msgWaveformInInactive": mix(fg_secondary, s_bubble, 0.42), "msgWaveformInInactiveSelected": "#ffffff88",
+            "msgWaveformOutActive": "#ffffff", "msgWaveformOutActiveSelected": "#ffffff",
+            "msgWaveformOutInactive": mix(fg_out_date, s_out_bg, 0.42), "msgWaveformOutInactiveSelected": "#ffffff88",
+            "msgBotKbIconFg": "#ffffff", "msgBotKbOverBgAdd": "#ffffff20", "msgBotKbRippleBg": "#ffffff2c",
+            "msgServiceBg": mix(s_rail, s_bar, 0.35) + "e8", "msgServiceBgSelected": accent_bg + "e8",
+            "msgServiceFg": "#ffffff", "historyUnreadBarBg": s_bar, "historyUnreadBarBorder": divider_pane,
+            "historyUnreadBarFg": fg_primary, "historyComposeAreaBg": s_bar, "historyComposeAreaFg": fg_primary,
+            "historyComposeAreaFgService": fg_secondary, "historyComposeIconFg": fg_icon,
+            "historyComposeIconFgOver": fg_icon_hover, "historySendIconFg": fg_link_in,
+            "historySendIconFgOver": "#ffffff", "historyPinnedBg": s_bar, "historyReplyBg": s_bar,
+            "historyReplyIconFg": fg_link_in, "historyReplyCancelFg": fg_icon,
+            "historyReplyCancelFgOver": "#ffffff", "historyToDownBg": s_bubble, "historyToDownBgOver": s_hover,
+            "historyToDownFg": "#ffffff", "historyToDownFgOver": "#ffffff", "historyToDownShadow": "#00000088",
+            "mediaPlayerBg": s_bar, "mediaPlayerActiveFg": fg_link_in, "mediaPlayerInactiveFg": s_hover,
+            "mediaPlayerDisabledFg": mix(fg_secondary, s_bar, 0.45), "emojiPanBg": s_bar,
+            "emojiPanCategories": s_list, "emojiPanHeaderFg": fg_secondary, "emojiPanHeaderBg": s_bar + "f2",
+            "emojiIconFg": fg_icon, "emojiIconFgActive": fg_link_in,
+            "tooltipBg": c["inverse_surface"], "tooltipFg": c["inverse_on_surface"],
+            "tooltipBorderFg": c["inverse_surface"], "toastBg": mix(s_rail, s_bubble, 0.45) + "f0",
+            "toastFg": "#ffffff", "scrollBarBg": mix(fg_secondary, s_list, 0.35) + "77",
+            "scrollBarBgOver": fg_link_in + "cc", "scrollBg": "#00000000", "scrollBgOver": "#00000000",
+            "profileStatusFgOver": fg_link_in, "profileVerifiedCheckBg": fg_link_in,
+            "profileVerifiedCheckFg": fg_on_light, "profileAdminStartFg": fg_link_in,
+            "radialFg": "#ffffff", "radialBg": "#00000088", "overviewCheckBg": "#00000066",
+            "overviewCheckFg": "#ffffff", "overviewCheckFgActive": "#ffffff", "overviewCheckBorder": "#ffffff",
+            "historyPeer1NameFg": peers[0], "historyPeer2NameFg": peers[1], "historyPeer3NameFg": peers[2],
+            "historyPeer4NameFg": peers[3], "historyPeer5NameFg": peers[4], "historyPeer6NameFg": peers[5],
+            "historyPeer7NameFg": peers[6], "historyPeer8NameFg": peers[7],
+        }
+        scrim_hex, scrim_alpha = s_rail, 0.88
+
+    out_lines = [f"// Material Design 3 Expressive {tg_style} Theme ({c.get('_scheme', '')}, {c.get('_mode', '')})"]
+    seen = set()
+    token_re = re.compile(r"^(\s*)([a-zA-Z0-9_]+)(\s*:\s*)(#[0-9a-fA-F]{6,8}|[a-zA-Z0-9_]+)(\s*;.*)$")
+    for line in colors_txt.splitlines():
+        m = token_re.match(line)
+        if m:
+            indent, key, sep, old_val, tail = m.groups()
+            seen.add(key)
+            if key in ov:
+                new_val = ov[key]
+            elif old_val.startswith("#"):
+                new_val = remap_blue(old_val)
+            else:
+                new_val = old_val
+            out_lines.append(f"{indent}{key}{sep}{new_val}{tail}")
+        else:
+            out_lines.append(line)
+
+    for k, v in ov.items():
+        if k not in seen:
+            out_lines.append(f"{k}: {v};")
+
+    wp = pathlib.Path(c.get("_wallpaper") or str(HOME / "Изображения/Wallpapers/535592.jpg"))
+    sc_r, sc_g, sc_b = hex_to_rgb(scrim_hex)
+    OUT_THEME.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+        bg_path = pathlib.Path(tf.name)
+    try:
+        has_bg = False
+        if wp.exists():
+            r = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(wp),
+                    "-vf", f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=24,drawbox=x=0:y=0:w=iw:h=ih:color=0x{sc_r:02x}{sc_g:02x}{sc_b:02x}@{scrim_alpha:.2f}:t=fill",
+                    "-q:v", "3", str(bg_path),
+                ],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            has_bg = (r.returncode == 0 and bg_path.exists() and bg_path.stat().st_size > 1000)
+        with zipfile.ZipFile(OUT_THEME, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("colors.tdesktop-theme", ("\n".join(out_lines) + "\n").encode("utf-8"))
+            if has_bg:
+                zf.write(bg_path, "background.jpg")
+        shutil.copy2(OUT_THEME, named_out)
+    finally:
+        bg_path.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

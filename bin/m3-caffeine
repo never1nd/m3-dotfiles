@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+cmd="${1:-status}"
+case "$cmd" in
+    status)
+        if pgrep -x hypridle >/dev/null 2>&1; then
+            echo "off"
+        else
+            echo "on"
+        fi
+        ;;
+    toggle)
+        if pgrep -x hypridle >/dev/null 2>&1; then
+            pkill -x hypridle 2>/dev/null || true
+            echo "on"
+        else
+            niri msg action spawn -- hypridle >/dev/null 2>&1 || true
+            echo "off"
+        fi
+        ;;
+esac

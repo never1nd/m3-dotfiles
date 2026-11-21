@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""Ultra-fast (<1ms) Niri navigation, unified dock Alt+1..9, and Fullscreen Isolation.
+- When leaving a fullscreen window onto a pair of normal windows, scrolls completely past fullscreen.
+- When a normal window is trapped between two fullscreen windows (or alone beside a fullscreen edge),
+  smoothly expands it to 100% width below the navbar (1900x1030) so ZERO fullscreen edges peek in,
+  and automatically restores it to 50% as soon as a normal neighbor is adjacent again.
+"""
+import json
+import os
+import pathlib
+import socket
+import subprocess
+import sys
+import time
+
+RUNTIME = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+AUTO_EXP_FILE = RUNTIME / "m3-auto-expanded.json"
+
+PINNED_APPS = [
+    {"app_ids": ("org.gnome.nautilus", "nautilus"),    "cmd": ["nautilus"]},
+    {"app_ids": ("zen", "zen-alpha", "zen-browser"),   "cmd": ["/opt/zen-browser-bin/zen-bin"]},
+    {"app_ids": ("com.keqdroid.keqdroid", "keqdroid"), "cmd": ["keqdroid"]},
+    {"app_ids": ("com.ayugram.desktop", "ayugram"),    "cmd": ["/usr/local/bin/AyuGram"]},
+]
+
+
+def niri_call(sock_path: str, payload):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.connect(sock_path)
+        s.sendall((json.dumps(payload) + "\n").encode())
+        buf = b""
+        while not buf.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        return json.loads(buf.decode())
+
+
+def load_auto_expanded() -> set[int]:
+    try:
+        return set(int(x) for x in json.loads(AUTO_EXP_FILE.read_text()))
+    except Exception:
+        return set()
+
+
+def save_auto_expanded(ids: set[int]) -> None:
+    try:
+        AUTO_EXP_FILE.write_text(json.dumps(sorted(ids)))
+    except Exception:
+        pass
+
+
+def is_fullscreen_win(w: dict) -> bool:
+    lay = w.get("layout") or {}
+    sz = lay.get("window_size") or lay.get("tile_size") or [0, 0]
+    return len(sz) >= 2 and sz[0] >= 1915 and sz[1] >= 1075
+
+
+def col_width(col: dict) -> float:
+    ws = col["windows"]
+    if not ws:
+        return 0.0
+    lay = ws[0].get("layout") or {}
+    sz = lay.get("tile_size") or lay.get("window_size") or [0, 0]
+    return float(sz[0]) if sz else 0.0
+
+
+def build_columns(windows: list[dict], ws_id: int):
+    by_col: dict[int, list[dict]] = {}
+    for w in windows:
+        if w.get("workspace_id") != ws_id or w.get("is_floating"):
+            continue
+        pos = (w.get("layout") or {}).get("pos_in_scrolling_layout")
+        if not pos:
+            continue
+        by_col.setdefault(int(pos[0]), []).append(w)
+    cols = []
+    for col_num in sorted(by_col.keys()):
+        wins = sorted(by_col[col_num], key=lambda x: ((x.get("layout") or {}).get("pos_in_scrolling_layout") or [0, 0])[1])
+        cols.append({
+            "col": col_num,
+            "windows": wins,
+            "fullscreen": any(is_fullscreen_win(w) for w in wins),
+            "focused": any(w.get("is_focused") for w in wins),
+        })
+    return cols
+
+
+def is_trapped_by_fullscreen(cols: list[dict], idx: int) -> bool:
+    if idx < 0 or idx >= len(cols) or cols[idx]["fullscreen"]:
+        return False
+    left_exists = idx > 0
+    right_exists = idx + 1 < len(cols)
+    left_fs = left_exists and cols[idx - 1]["fullscreen"]
+    right_fs = right_exists and cols[idx + 1]["fullscreen"]
+    # Trapped if sandwiched between two fullscreen columns, OR at an edge with its sole neighbor being fullscreen
+    if left_fs and right_fs:
+        return True
+    if not left_exists and right_fs:
+        return True
+    if not right_exists and left_fs:
+        return True
+    return False
+
+
+def focus_win(sock_path: str, win_id: int):
+    niri_call(sock_path, {"Action": {"FocusWindow": {"id": int(win_id)}}})
+
+
+def apply_trapped_sizing(sock_path: str, cols: list[dict], idx: int, all_window_ids: set[int]) -> bool:
+    """Expand a trapped column to 100% width below navbar, or restore previously auto-expanded column to 50%.
+    Returns True if a column width change was applied."""
+    if idx < 0 or idx >= len(cols) or cols[idx]["fullscreen"]:
+        return False
+    auto_exp = load_auto_expanded() & all_window_ids
+    win_ids = {int(w["id"]) for w in cols[idx]["windows"]}
+    trapped = is_trapped_by_fullscreen(cols, idx)
+    w = col_width(cols[idx])
+
+    if trapped:
+        if w < 1800.0:
+            niri_call(sock_path, {"Action": {"SetColumnWidth": {"change": {"SetProportion": 100.0}}}})
+            auto_exp |= win_ids
+            save_auto_expanded(auto_exp)
+            return True
+    else:
+        if auto_exp & win_ids:
+            if w >= 1800.0:
+                niri_call(sock_path, {"Action": {"SetColumnWidth": {"change": {"SetProportion": 50.0}}}})
+            auto_exp -= win_ids
+            save_auto_expanded(auto_exp)
+            return True
+    save_auto_expanded(auto_exp)
+    return False
+
+
+def main():
+    if len(sys.argv) < 2:
+        return
+    mode = sys.argv[1]
+
+    # 1) Right-navbar menu cycling when a right popup is open (Alt+A / Alt+D)
+    if mode in ("left", "right"):
+        sf = RUNTIME / "m3-popup"
+        if sf.exists():
+            cur = sf.read_text(errors="ignore").strip()
+            if cur in ("sysmon", "volume", "calendar", "cc", "media"):
+                subprocess.run(["qs", "ipc", "call", "shell", "stepMenu", mode], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+
+    sock_path = os.environ.get("NIRI_SOCKET", "")
+    if not sock_path:
+        return
+
+    wins_resp = niri_call(sock_path, "Windows")
+    windows = (wins_resp.get("Ok") or {}).get("Windows") or []
+    all_ids = {int(w["id"]) for w in windows}
+    focused_w = next((w for w in windows if w.get("is_focused")), None)
+
+    # Sync mode: adjust focused column if it became trapped or freed after Alt+F / open / close!
+    if mode == "sync":
+        if not focused_w or focused_w.get("is_floating") or is_fullscreen_win(focused_w):
+            return
+        cols = build_columns(windows, focused_w.get("workspace_id"))
+        cur_idx = next((i for i, c in enumerate(cols) if c["focused"]), None)
+        if cur_idx is not None:
+            apply_trapped_sizing(sock_path, cols, cur_idx, all_ids)
+        return
+
+    # Move active column to exact 1-based position (Win+1..9)!
+    if mode == "move" and len(sys.argv) >= 3:
+        target_col = int(sys.argv[2])
+        if target_col < 1 or not focused_w or focused_w.get("is_floating"):
+            return
+        niri_call(sock_path, {"Action": {"MoveColumnToIndex": {"index": target_col}}})
+        # Re-check fullscreen isolation & trapped sizing after move!
+        cur_wins = (niri_call(sock_path, "Windows").get("Ok") or {}).get("Windows") or []
+        cur_ids = {int(w["id"]) for w in cur_wins}
+        fid = int(focused_w["id"])
+        fw = next((w for w in cur_wins if int(w["id"]) == fid), None)
+        if fw and not is_fullscreen_win(fw):
+            cols = build_columns(cur_wins, fw.get("workspace_id"))
+            t_idx = next((i for i, c in enumerate(cols) if any(w["id"] == fid for w in c["windows"])), None)
+            if t_idx is not None:
+                if is_trapped_by_fullscreen(cols, t_idx):
+                    apply_trapped_sizing(sock_path, cols, t_idx, cur_ids)
+                else:
+                    apply_trapped_sizing(sock_path, cols, t_idx, cur_ids)
+                    left_fs = t_idx > 0 and cols[t_idx - 1]["fullscreen"]
+                    right_fs = t_idx + 1 < len(cols) and cols[t_idx + 1]["fullscreen"]
+                    if right_fs and not left_fs and t_idx - 1 >= 0:
+                        focus_win(sock_path, cols[t_idx - 1]["windows"][0]["id"])
+                        focus_win(sock_path, fid)
+                    elif left_fs and not right_fs and t_idx + 1 < len(cols):
+                        focus_win(sock_path, cols[t_idx + 1]["windows"][0]["id"])
+                        focus_win(sock_path, fid)
+        return
+
+    # Unified Dock Index mode (Alt+1..9 & TopBar pinned clicks)
+    if mode == "index" and len(sys.argv) >= 3:
+        slot = int(sys.argv[2]) - 1
+        if slot < 0:
+            return
+        ws_id = focused_w.get("workspace_id") if focused_w else None
+        if ws_id is None:
+            ws_resp = niri_call(sock_path, "Workspaces")
+            wss = (ws_resp.get("Ok") or {}).get("Workspaces") or []
+            act = next((x for x in wss if x.get("is_focused") or x.get("is_active")), None)
+            ws_id = act.get("id") if act else None
+        if ws_id is None:
+            return
+        ws_wins = [w for w in windows if w.get("workspace_id") == ws_id]
+        def sort_key(w):
+            pos = (w.get("layout") or {}).get("pos_in_scrolling_layout")
+            if pos:
+                return (0, int(pos[0]), int(pos[1]), int(w["id"]))
+            return (1, 0, 0, int(w["id"]))
+        ws_wins.sort(key=sort_key)
+
+        present_low = {(w.get("app_id") or "").lower() for w in ws_wins}
+        unified = [{"type": "win", "id": int(w["id"])} for w in ws_wins]
+        for pin in PINNED_APPS:
+            if not any(aid in present_low for aid in pin["app_ids"]):
+                other = next((w for w in windows if (w.get("app_id") or "").lower() in pin["app_ids"]), None)
+                if other:
+                    unified.append({"type": "win", "id": int(other["id"])})
+                else:
+                    unified.append({"type": "launch", "cmd": pin["cmd"], "app_ids": pin["app_ids"]})
+
+        if slot >= len(unified):
+            return
+        entry = unified[slot]
+        if entry["type"] == "launch":
+            before_ids = set(all_ids)
+            pin_app_ids = entry["app_ids"]
+            niri_call(sock_path, {"Action": {"Spawn": {"command": entry["cmd"]}}})
+            deadline = time.monotonic() + 5.0
+            new_win = None
+            while time.monotonic() < deadline:
+                time.sleep(0.05)
+                cur_wins = (niri_call(sock_path, "Windows").get("Ok") or {}).get("Windows") or []
+                for w in cur_wins:
+                    wid = int(w["id"])
+                    if wid not in before_ids and (w.get("app_id") or "").lower() in pin_app_ids:
+                        new_win = w
+                        break
+                if new_win:
+                    break
+            if new_win:
+                nid = int(new_win["id"])
+                focus_win(sock_path, nid)
+                niri_call(sock_path, {"Action": {"MoveColumnToLast": {}}})
+                cur_wins = (niri_call(sock_path, "Windows").get("Ok") or {}).get("Windows") or []
+                cur_ids = {int(w["id"]) for w in cur_wins}
+                cols = build_columns(cur_wins, new_win.get("workspace_id"))
+                last_idx = next((i for i, c in enumerate(cols) if any(w["id"] == nid for w in c["windows"])), None)
+                if last_idx is not None:
+                    apply_trapped_sizing(sock_path, cols, last_idx, cur_ids)
+                focus_win(sock_path, nid)
+            return
+
+        mode = "focus"
+        sys.argv = [sys.argv[0], "focus", str(entry["id"])]
+
+    # Direct Focus mode (TopBar dock clicks & index handoff)
+    if mode == "focus" and len(sys.argv) >= 3:
+        target_id = int(sys.argv[2])
+        target_w = next((w for w in windows if w.get("id") == target_id), None)
+        if not target_w:
+            focus_win(sock_path, target_id)
+            return
+        ws_id = target_w.get("workspace_id")
+        cols = build_columns(windows, ws_id)
+        t_idx = next((i for i, c in enumerate(cols) if any(w["id"] == target_id for w in c["windows"])), None)
+        if t_idx is None or cols[t_idx]["fullscreen"]:
+            focus_win(sock_path, target_id)
+            return
+
+        if is_trapped_by_fullscreen(cols, t_idx):
+            focus_win(sock_path, target_id)
+            apply_trapped_sizing(sock_path, cols, t_idx, all_ids)
+            return
+
+        # Not trapped: restore if previously auto-expanded & isolate from single-sided fullscreen neighbor
+        left_fs = t_idx > 0 and cols[t_idx - 1]["fullscreen"]
+        right_fs = t_idx + 1 < len(cols) and cols[t_idx + 1]["fullscreen"]
+        focus_win(sock_path, target_id)
+        apply_trapped_sizing(sock_path, cols, t_idx, all_ids)
+        if right_fs and not left_fs and t_idx - 1 >= 0:
+            focus_win(sock_path, cols[t_idx - 1]["windows"][0]["id"])
+            focus_win(sock_path, target_id)
+        elif left_fs and not right_fs and t_idx + 1 < len(cols):
+            focus_win(sock_path, cols[t_idx + 1]["windows"][0]["id"])
+            focus_win(sock_path, target_id)
+        return
+
+    # Directional Left / Right Navigation (Alt+A / Alt+D / Mod+H / Mod+L)
+    if not focused_w or focused_w.get("is_floating"):
+        act = "FocusColumnLeft" if mode == "left" else "FocusColumnRight"
+        niri_call(sock_path, {"Action": {act: {}}})
+        return
+
+    ws_id = focused_w.get("workspace_id")
+    cols = build_columns(windows, ws_id)
+    cur_idx = next((i for i, c in enumerate(cols) if c["focused"]), None)
+    if cur_idx is None:
+        act = "FocusColumnLeft" if mode == "left" else "FocusColumnRight"
+        niri_call(sock_path, {"Action": {act: {}}})
+        return
+
+    delta = -1 if mode == "left" else 1
+    next_idx = cur_idx + delta
+    if next_idx < 0 or next_idx >= len(cols):
+        return
+
+    if cols[next_idx]["fullscreen"]:
+        act = "FocusColumnLeft" if mode == "left" else "FocusColumnRight"
+        niri_call(sock_path, {"Action": {act: {}}})
+        return
+
+    next_win_id = cols[next_idx]["windows"][0]["id"]
+
+    # If target column is trapped between two fullscreen columns (or alone beside a fullscreen edge):
+    # focus it and smoothly expand to 100% width below navbar!
+    if is_trapped_by_fullscreen(cols, next_idx):
+        focus_win(sock_path, next_win_id)
+        apply_trapped_sizing(sock_path, cols, next_idx, all_ids)
+        return
+
+    # If leaving a fullscreen column onto a normal column that HAS a normal partner:
+    # pull the pair of normal columns completely onto the screen!
+    if cols[cur_idx]["fullscreen"]:
+        partner_idx = next_idx + delta
+        if 0 <= partner_idx < len(cols) and not cols[partner_idx]["fullscreen"]:
+            focus_win(sock_path, next_win_id)
+            apply_trapped_sizing(sock_path, cols, next_idx, all_ids)
+            focus_win(sock_path, cols[partner_idx]["windows"][0]["id"])
+            focus_win(sock_path, next_win_id)
+            return
+
+    # Normal step + restore if previously auto-expanded
+    act = "FocusColumnLeft" if mode == "left" else "FocusColumnRight"
+    niri_call(sock_path, {"Action": {act: {}}})
+    apply_trapped_sizing(sock_path, cols, next_idx, all_ids)
+
+
+if __name__ == "__main__":
+    main()

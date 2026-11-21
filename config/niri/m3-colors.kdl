@@ -1,0 +1,42 @@
+// Auto-generated Material Design 3 Expressive tokens (scheme-tonal-spot, dark)
+layout {
+    focus-ring {
+        active-color   "#adc6ff"
+        inactive-color "#33353a"
+        urgent-color   "#ffb4ab"
+    }
+
+    border {
+        active-color   "#adc6ff"
+        inactive-color "#33353a"
+        urgent-color   "#ffb4ab"
+    }
+
+    tab-indicator {
+        active-color   "#adc6ff"
+        inactive-color "#3f4759"
+        urgent-color   "#ffb4ab"
+    }
+
+    insert-hint {
+        color "#adc6ff66"
+    }
+}
+
+overview {
+    zoom 0.54
+    backdrop-color "#0c0e13"
+    workspace-shadow {
+        softness 48
+        spread 6
+        offset x=0 y=12
+        color "#00000080"
+    }
+}
+
+recent-windows {
+    highlight {
+        active-color "#adc6ffff"
+        urgent-color "#ffb4abff"
+    }
+}

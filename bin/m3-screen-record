@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""F10 Material Design 3 Expressive Hardware Screen Recorder Toggle (gpu-screen-recorder NVENC 60fps + audio)."""
+import datetime
+import os
+import pathlib
+import signal
+import subprocess
+import time
+
+HOME = pathlib.Path.home()
+RUNTIME = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+META_FILE = RUNTIME / "m3-rec.file"
+UNIT = "m3-screen-recorder.service"
+VID_DIR = HOME / "Видео/Recordings"
+
+
+def unit_active() -> bool:
+    r = subprocess.run(["systemctl", "--user", "is-active", "--quiet", UNIT])
+    return r.returncode == 0
+
+
+def unit_main_pid() -> int:
+    try:
+        out = subprocess.check_output(
+            ["systemctl", "--user", "show", "-p", "MainPID", "--value", UNIT],
+            text=True,
+        ).strip()
+        return int(out)
+    except Exception:
+        return 0
+
+
+def notify(title: str, body: str, icon: str = "media-record") -> None:
+    subprocess.run(
+        ["notify-send", "-a", "Запись экрана M3", "-i", icon, title, body],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def set_qs_recording(state: bool) -> None:
+    subprocess.run(
+        ["qs", "ipc", "call", "shell", "setRecording", "true" if state else "false"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def main() -> None:
+    VID_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Stop active recording cleanly with SIGINT so MP4 moov atom finalizes properly
+    if unit_active():
+        pid = unit_main_pid()
+        saved = META_FILE.read_text().strip() if META_FILE.exists() else ""
+        META_FILE.unlink(missing_ok=True)
+        if pid > 0:
+            try:
+                os.kill(pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+        for _ in range(50):
+            if not unit_active():
+                break
+            time.sleep(0.1)
+        if unit_active():
+            subprocess.run(["systemctl", "--user", "stop", UNIT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        set_qs_recording(False)
+        if saved and pathlib.Path(saved).exists() and pathlib.Path(saved).stat().st_size > 1024:
+            notify("Запись сохранена", f"{pathlib.Path(saved).name} · ~/Видео/Recordings", "video-x-generic")
+        else:
+            notify("Запись остановлена", "", "video-x-generic")
+        return
+
+    # Start new hardware 1080p60 NVENC + PipeWire audio recording via transient user systemd service
+    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    outfile = VID_DIR / f"Recording-{ts}.mp4"
+    META_FILE.write_text(str(outfile))
+
+    subprocess.run(["systemctl", "--user", "reset-failed", UNIT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    r = subprocess.run(
+        [
+            "systemd-run",
+            "--user",
+            f"--unit={UNIT}",
+            "--collect",
+            "--property=KillSignal=SIGINT",
+            "--property=TimeoutStopSec=10",
+            "gpu-screen-recorder",
+            "-w", "HDMI-A-1",
+            "-f", "60",
+            "-a", "default_output",
+            "-o", str(outfile),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if r.returncode != 0:
+        META_FILE.unlink(missing_ok=True)
+        notify("Ошибка запуска записи", r.stderr.strip()[:200], "dialog-error")
+        return
+
+    set_qs_recording(True)
+    notify("Запись экрана началась", "1080p 60fps + звук · F10 — остановить", "media-record")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,185 @@
+// ────────────── Keybindings (60% keyboard layout, M3 Expressive Native) ──────────────
+binds {
+    // ─── Help ───
+    Mod+Slash                           { show-hotkey-overlay; }
+    Mod+Shift+ESCAPE                    { show-hotkey-overlay; }
+
+    // ─── Custom M3 Expressive Launcher (also triggered by tapping Win via keyd) ───
+    Mod+Space                           allow-inhibiting=false repeat=false hotkey-overlay-title="Поиск приложений (M3 Expressive)" { spawn "__HOME__/.local/bin/launcher-toggle"; }
+
+    // ─── Applications ───
+    Mod+Return                          hotkey-overlay-title="Терминал: Kitty" { spawn "kitty"; }
+    Mod+B                               hotkey-overlay-title="Браузер: Zen" { spawn "/opt/zen-browser-bin/zen-bin"; }
+    Mod+E                               hotkey-overlay-title="Файлы: Nautilus" { spawn "nautilus"; }
+
+    // ─── Screenshots ───
+    Ctrl+Super+S                        repeat=false hotkey-overlay-title="Скриншот (область)" { screenshot; }
+    Ctrl+Super+Shift+S                  repeat=false hotkey-overlay-title="Скриншот (экран)" { screenshot-screen; }
+    Ctrl+Super+Alt+S                    repeat=false hotkey-overlay-title="Скриншот (окно)" { screenshot-window; }
+
+    // ─── Navbar Hide/Show & Video Screen Recording ───
+    F1                                  repeat=false hotkey-overlay-title="Скрыть / показать навбар (M3)" { spawn-sh "qs ipc call shell toggleBar"; }
+    F10                                 repeat=false hotkey-overlay-title="Запись экрана видео (старт / стоп)" { spawn "__HOME__/.local/bin/m3-screen-record"; }
+
+    // ─── M3 Expressive Shell Panels & Controls ───
+    Mod+Shift+Return                    hotkey-overlay-title="Обои и динамическая палитра M3" { spawn "__HOME__/.local/bin/m3-wallpaper-picker"; }
+    Alt+Tab                             repeat=false hotkey-overlay-title="Центр управления (M3 Expressive)" { spawn-sh "qs ipc call shell toggleControlCenter"; }
+    Mod+S                               hotkey-overlay-title="Центр управления и уведомления" { spawn-sh "qs ipc call shell toggleControlCenter"; }
+    Mod+Shift+S                         repeat=false hotkey-overlay-title="Скриншот (меню M3 Expressive)" { spawn-sh "qs ipc call shell toggleScreenshot"; }
+    Mod+Shift+M                         hotkey-overlay-title="Настройки M3 Expressive" { spawn "__HOME__/.local/bin/m3-settings-menu"; }
+    Mod+Shift+T                         hotkey-overlay-title="Переключить Dark / Light M3" { spawn "__HOME__/.local/bin/m3-toggle-mode"; }
+    Ctrl+Alt+1                          repeat=false hotkey-overlay-title="Профиль: Фиолетовый" { spawn "__HOME__/.local/bin/m3-profile" "violet"; }
+    Ctrl+Alt+2                          repeat=false hotkey-overlay-title="Профиль: Синий" { spawn "__HOME__/.local/bin/m3-profile" "blue"; }
+    Ctrl+Alt+3                          repeat=false hotkey-overlay-title="Профиль: Зеленый" { spawn "__HOME__/.local/bin/m3-profile" "forest"; }
+    Ctrl+Alt+4                          repeat=false hotkey-overlay-title="Профиль: Оранжевый" { spawn "__HOME__/.local/bin/m3-profile" "peach"; }
+    Alt+Shift+1                         repeat=false { spawn "__HOME__/.local/bin/m3-profile" "violet"; }
+    Alt+Shift+2                         repeat=false { spawn "__HOME__/.local/bin/m3-profile" "blue"; }
+    Alt+Shift+3                         repeat=false { spawn "__HOME__/.local/bin/m3-profile" "forest"; }
+    Alt+Shift+4                         repeat=false { spawn "__HOME__/.local/bin/m3-profile" "peach"; }
+    Alt+Shift+Exclam                    repeat=false { spawn "__HOME__/.local/bin/m3-profile" "violet"; }
+    Alt+Shift+At                        repeat=false { spawn "__HOME__/.local/bin/m3-profile" "blue"; }
+    Alt+Shift+NumberSign                repeat=false { spawn "__HOME__/.local/bin/m3-profile" "forest"; }
+    Alt+Shift+Dollar                    repeat=false { spawn "__HOME__/.local/bin/m3-profile" "peach"; }
+    Mod+V                               repeat=false hotkey-overlay-title="Буфер обмена (M3 Expressive)" { spawn-sh "qs ipc call shell toggleClipboard"; }
+    Mod+Alt+L                           hotkey-overlay-title="Заблокировать экран" { spawn "hyprlock"; }
+    Alt+Escape                          repeat=false hotkey-overlay-title="Меню питания (M3 Expressive)" { spawn-sh "qs ipc call shell togglePower"; }
+    Mod+Shift+Q                         hotkey-overlay-title="Меню питания и сессии" { spawn "__HOME__/.local/bin/m3-power-menu"; }
+    Mod+Shift+BackSpace                 hotkey-overlay-title="Меню питания (60%)" { spawn "__HOME__/.local/bin/m3-power-menu"; }
+
+    // ─── Media & Brightness (Native SwayOSD + Playerctl) ───
+    XF86AudioRaiseVolume                allow-when-locked=true { spawn-sh "swayosd-client --output-volume raise"; }
+    XF86AudioLowerVolume                allow-when-locked=true { spawn-sh "swayosd-client --output-volume lower"; }
+    XF86AudioMute                       allow-when-locked=true { spawn-sh "swayosd-client --output-volume mute-toggle"; }
+    XF86AudioMicMute                    allow-when-locked=true { spawn-sh "swayosd-client --input-volume mute-toggle"; }
+    XF86AudioNext                       allow-when-locked=true { spawn-sh "playerctl next"; }
+    XF86AudioPrev                       allow-when-locked=true { spawn-sh "playerctl previous"; }
+    XF86AudioPlay                       allow-when-locked=true { spawn-sh "playerctl play-pause"; }
+    XF86AudioPause                      allow-when-locked=true { spawn-sh "playerctl pause"; }
+    XF86MonBrightnessUp                 allow-when-locked=true { spawn-sh "swayosd-client --brightness raise"; }
+    XF86MonBrightnessDown               allow-when-locked=true { spawn-sh "swayosd-client --brightness lower"; }
+
+    // ─── Window & Workspace Navigation (WASD on Alt + Vim on Mod for 60%) ───
+    Alt+Q                               repeat=false { close-window; }
+
+    Alt+A                               { spawn "__HOME__/.local/bin/m3-nav-lr" "left"; }
+    Alt+D                               { spawn "__HOME__/.local/bin/m3-nav-lr" "right"; }
+    Alt+W                               { focus-workspace-up; }
+    Alt+S                               { focus-workspace-down; }
+
+    Alt+Shift+A                         { move-column-left; }
+    Alt+Shift+D                         { move-column-right; }
+    Alt+Shift+W                         { move-column-to-workspace-up; }
+    Alt+Shift+S                         { move-column-to-workspace-down; }
+
+    // Vim-style focus & move
+    Mod+H                               { spawn "__HOME__/.local/bin/m3-nav-lr" "left"; }
+    Mod+L                               { spawn "__HOME__/.local/bin/m3-nav-lr" "right"; }
+    Mod+K                               { focus-window-up; }
+    Mod+J                               { focus-window-down; }
+
+    Mod+Ctrl+H                          { move-column-left; }
+    Mod+Ctrl+L                          { move-column-right; }
+    Mod+Ctrl+K                          { move-window-up; }
+    Mod+Ctrl+J                          { move-window-down; }
+
+    // First / Last column
+    Mod+Shift+A                         { focus-column-first; }
+    Mod+Shift+D                         { focus-column-last; }
+    Mod+Ctrl+Shift+A                    { move-column-to-first; }
+    Mod+Ctrl+Shift+D                    { move-column-to-last; }
+
+    // Multi-monitor focus & move
+    Mod+Shift+H                         { focus-monitor-left; }
+    Mod+Shift+L                         { focus-monitor-right; }
+    Mod+Shift+K                         { focus-monitor-up; }
+    Mod+Shift+J                         { focus-monitor-down; }
+
+    Mod+Ctrl+Shift+H                    { move-column-to-monitor-left; }
+    Mod+Ctrl+Shift+L                    { move-column-to-monitor-right; }
+    Mod+Ctrl+Shift+K                    { move-column-to-monitor-up; }
+    Mod+Ctrl+Shift+J                    { move-column-to-monitor-down; }
+
+    // Column stacking / tabbing / floating
+    Mod+Shift+V                         { switch-focus-between-floating-and-tiling; }
+    Mod+BracketLeft                     { consume-or-expel-window-left; }
+    Mod+BracketRight                    { consume-or-expel-window-right; }
+    Mod+Comma                           { consume-window-into-column; }
+    Mod+Period                          { expel-window-from-column; }
+
+    // Sizing presets
+    Mod+R                               { switch-preset-column-width; }
+    Mod+Shift+R                         { switch-preset-column-width-back; }
+    Mod+Ctrl+Shift+R                    { switch-preset-window-height; }
+    Mod+Ctrl+R                          { reset-window-height; }
+
+    // ─── Mouse Wheel Navigation ───
+    Mod+WheelScrollDown                 cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp                   cooldown-ms=150 { focus-workspace-up; }
+    Mod+Ctrl+WheelScrollDown            cooldown-ms=150 { move-column-to-workspace-down; }
+    Mod+Ctrl+WheelScrollUp              cooldown-ms=150 { move-column-to-workspace-up; }
+    Mod+WheelScrollRight                { focus-column-right; }
+    Mod+WheelScrollLeft                 { focus-column-left; }
+    Mod+Ctrl+WheelScrollRight           { move-column-right; }
+    Mod+Ctrl+WheelScrollLeft            { move-column-left; }
+    Mod+Shift+WheelScrollDown           { focus-column-right; }
+    Mod+Shift+WheelScrollUp             { focus-column-left; }
+    Mod+Ctrl+Shift+WheelScrollDown      { move-column-right; }
+    Mod+Ctrl+Shift+WheelScrollUp        { move-column-left; }
+
+    // ─── Direct Window Focus 1-9 (matches left-to-right navbar dock order) ───
+    Alt+1                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "1"; }
+    Alt+2                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "2"; }
+    Alt+3                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "3"; }
+    Alt+4                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "4"; }
+    Alt+5                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "5"; }
+    Alt+6                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "6"; }
+    Alt+7                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "7"; }
+    Alt+8                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "8"; }
+    Alt+9                               { spawn "__HOME__/.local/bin/m3-nav-lr" "index" "9"; }
+
+    // ─── Move Active Window to Carousel Position 1-9 (Win+1..9) ───
+    Mod+1                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "1"; }
+    Mod+2                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "2"; }
+    Mod+3                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "3"; }
+    Mod+4                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "4"; }
+    Mod+5                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "5"; }
+    Mod+6                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "6"; }
+    Mod+7                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "7"; }
+    Mod+8                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "8"; }
+    Mod+9                               { spawn "__HOME__/.local/bin/m3-nav-lr" "move" "9"; }
+
+    Mod+Ctrl+1                          { move-column-to-workspace 1; }
+    Mod+Ctrl+2                          { move-column-to-workspace 2; }
+    Mod+Ctrl+3                          { move-column-to-workspace 3; }
+    Mod+Ctrl+4                          { move-column-to-workspace 4; }
+    Mod+Ctrl+5                          { move-column-to-workspace 5; }
+    Mod+Ctrl+6                          { move-column-to-workspace 6; }
+    Mod+Ctrl+7                          { move-column-to-workspace 7; }
+    Mod+Ctrl+8                          { move-column-to-workspace 8; }
+    Mod+Ctrl+9                          { move-column-to-workspace 9; }
+
+    Mod+Tab                             { focus-workspace-previous; }
+
+    // ─── Layout Controls ───
+    Mod+Ctrl+F                          { expand-column-to-available-width; }
+    Mod+C                               { center-column; }
+    Mod+Ctrl+C                          { center-visible-columns; }
+    Mod+Minus                           { set-column-width "-10%"; }
+    Mod+Equal                           { set-column-width "+10%"; }
+    Mod+Shift+Minus                     { set-window-height "-10%"; }
+    Mod+Shift+Equal                     { set-window-height "+10%"; }
+
+    // ─── Window Modes ───
+    Mod+T                               { toggle-window-floating; }
+    Alt+F                               { fullscreen-window; }
+    Mod+Shift+F                         { fullscreen-window; }
+    Alt+M                               { maximize-column; }
+    Mod+W                               { toggle-column-tabbed-display; }
+    Mod+M                               { maximize-window-to-edges; }
+    Alt+O                               repeat=false { toggle-overview; }
+
+    // ─── Emergency & Power ───
+    Mod+ESCAPE                          allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Shift+P                         { power-off-monitors; }
+    Ctrl+Alt+BackSpace                  { quit; }
+}

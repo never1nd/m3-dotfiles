@@ -1,0 +1,12 @@
+[SddmGreeterTheme]
+Name=Material Design 3 Expressive
+Description=Material Design 3 Expressive Qt6 SDDM theme synced with M3 profiles
+Author=plenka
+License=MIT
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=m3-expressive
+Theme-API=2.0
+QtVersion=6

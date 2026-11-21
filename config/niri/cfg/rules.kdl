@@ -1,0 +1,117 @@
+// ────────────── Material Design 3 Expressive Window & Layer Rules ──────────────
+// M3 Expressive LargeIncreased = 20px rounded windows
+window-rule {
+    geometry-corner-radius 20
+    clip-to-geometry true
+}
+
+// Desktop-pinned Kitty terminal (transparent surface seated inside Quickshell 28px rounded card)
+layer-rule {
+    match namespace="^kitty-desktop$"
+}
+
+// Desktop M3 Expressive 28px rounded cards (Music Widget + Terminal Backdrop Card)
+layer-rule {
+    match namespace="^(m3-desktop-music|m3-desktop-terminal-card)$"
+    geometry-corner-radius 28
+    shadow {
+        on
+        softness 32
+        spread 2
+        offset x=0 y=8
+        color "#00000055"
+    }
+}
+
+// Translucent blur on terminals
+window-rule {
+    match app-id="^(kitty|kitty-desktop|Alacritty)$"
+    background-effect {
+        blur true
+        xray false
+    }
+}
+
+// Floating utility dialogs
+window-rule {
+    match app-id=r#"^(org\.pulseaudio\.pavucontrol|qt6ct|qt5ct|nwg-look)$"#
+    open-floating true
+    default-column-width { fixed 760; }
+    default-window-height { fixed 580; }
+}
+
+// Steam dialogs & notifications
+window-rule {
+    match app-id="steam"
+    exclude title=r#"^[Ss]team$"#
+    open-floating true
+}
+
+window-rule {
+    match app-id="steam" title=r#"^notificationtoasts_\d+_desktop$"#
+    default-floating-position x=12 y=12 relative-to="bottom-right"
+    open-focused false
+}
+
+// Keep awww wallpaper inside Niri overview backdrop
+layer-rule {
+    match namespace="^awww-daemon$"
+    place-within-backdrop true
+}
+
+// M3 Expressive ExtraLarge (28px) floating Rofi launcher
+layer-rule {
+    match namespace="^rofi$"
+    geometry-corner-radius 28
+    shadow {
+        on
+        softness 40
+        spread 4
+        offset x=0 y=12
+        color "#00000075"
+    }
+}
+
+// SwayNC Control Center (ExtraLarge 28px)
+layer-rule {
+    match namespace="^swaync-control-center$"
+    geometry-corner-radius 28
+    shadow {
+        on
+        softness 40
+        spread 4
+        offset x=0 y=12
+        color "#00000075"
+    }
+}
+
+// SwayNC Notification Toasts (LargeIncreased 20px)
+layer-rule {
+    match namespace="^swaync-notification-window$"
+    geometry-corner-radius 20
+}
+
+// SwayOSD Pill
+layer-rule {
+    match namespace="^swayosd$"
+    geometry-corner-radius 28
+}
+
+recent-windows {
+    debounce-ms 750
+    open-delay-ms 150
+    highlight {
+        padding 28
+        corner-radius 24
+    }
+    previews {
+        max-height 480
+        max-scale 0.5
+    }
+}
+
+// Nuvio Desktop (Compose/JVM): disable rounded clipping in fullscreen & ensure clean dark backdrop
+window-rule {
+    match app-id="^com-nuvio-app-MainKt$"
+    draw-border-with-background false
+}

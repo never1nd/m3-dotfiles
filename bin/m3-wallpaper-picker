@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+if pgrep -x rofi >/dev/null 2>&1; then
+    pkill -x rofi
+    exit 0
+fi
+
+dirs=("$HOME/Изображения/Wallpapers" "/usr/share/wallpapers/cachyos-wallpapers")
+entries=""
+declare -A map
+
+for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    while IFS= read -r -d '' f; do
+        base="$(basename "$f")"
+        map["$base"]="$f"
+        entries+="${base}\0icon\x1f${f}\n"
+    done < <(find "$d" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 | sort -z)
+done
+
+chosen=$(printf "%b" "$entries" | rofi -dmenu -i -show-icons -p "Обои M3" -theme ~/.config/rofi/m3-expressive.rasi)
+if [ -n "$chosen" ] && [ -n "${map[$chosen]:-}" ]; then
+    __HOME__/.local/bin/m3-apply-wallpaper "${map[$chosen]}"
+fi

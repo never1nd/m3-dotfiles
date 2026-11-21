@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+import json
+import pathlib
+import subprocess
+import time
+
+def read_cpu_stat():
+    parts = pathlib.Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+    vals = [int(x) for x in parts[:8]]
+    idle = vals[3] + vals[4]
+    total = sum(vals)
+    return idle, total
+
+def get_cpu_pct():
+    i1, t1 = read_cpu_stat()
+    time.sleep(0.15)
+    i2, t2 = read_cpu_stat()
+    dt = max(1, t2 - t1)
+    return round(100.0 * (1.0 - (i2 - i1) / dt))
+
+def get_cpu_temp():
+    preferred = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz")
+    found = {}
+    for hw in sorted(pathlib.Path("/sys/class/hwmon").glob("hwmon*")):
+        name_p = hw / "name"
+        if not name_p.exists():
+            continue
+        name = name_p.read_text().strip()
+        for t in sorted(hw.glob("temp*_input")):
+            try:
+                val = int(t.read_text().strip()) / 1000.0
+                if 5.0 < val < 125.0:
+                    found.setdefault(name, round(val))
+                    break
+            except Exception:
+                pass
+    for pref in preferred:
+        if pref in found:
+            return found[pref]
+    return next(iter(found.values()), 0)
+
+def get_ram():
+    mem = {}
+    for line in pathlib.Path("/proc/meminfo").read_text().splitlines():
+        k, rest = line.split(":", 1)
+        mem[k] = int(rest.strip().split()[0])
+    total_kb = mem.get("MemTotal", 1)
+    avail_kb = mem.get("MemAvailable", 0)
+    used_kb = max(0, total_kb - avail_kb)
+    return {
+        "used_gb": round(used_kb / 1048576.0, 1),
+        "total_gb": round(total_kb / 1048576.0, 1),
+        "total_mb": total_kb / 1024.0,
+        "pct": round(100.0 * used_kb / total_kb),
+    }
+
+def friendly_app_name(comm: str, cmdline: str) -> str:
+    low_cmd = cmdline.lower()
+    low_comm = comm.lower()
+    rules = [
+        ("zen-browser", "Zen Browser"),
+        ("zen-bin", "Zen Browser"),
+        ("pear-desktop", "Pear Desktop"),
+        ("youtube music", "Pear Desktop"),
+        ("nuvio", "Nuvio"),
+        ("ayugram", "AyuGram"),
+        ("vesktop", "Vesktop"),
+        ("vscodium", "VSCodium"),
+        ("codium", "VSCodium"),
+        ("termius", "Termius"),
+        ("hydralauncher", "Hydra Launcher"),
+        ("prime-agent", "Prime Agent"),
+        ("quickshell", "Quickshell"),
+        ("keqdroid", "KeqDroid"),
+        ("nautilus", "Файлы (Nautilus)"),
+        ("firefox", "Firefox"),
+        ("steam", "Steam"),
+        ("kitty", "Kitty"),
+        ("alacritty", "Alacritty"),
+        ("niri", "Niri"),
+        ("swaync", "SwayNC"),
+        ("awww", "AWWW Обои"),
+        ("xwayland", "XWayland"),
+        ("pipewire", "PipeWire"),
+    ]
+    for needle, label in rules:
+        if needle in low_cmd or needle in low_comm:
+            return label
+    if low_comm == "qs":
+        return "Quickshell"
+    if "python" in low_comm and "prime" in low_cmd:
+        return "Prime Agent (Python)"
+    return comm
+
+def get_top_ram_apps(total_mb: float, limit: int = 7):
+    grouped = {}
+    try:
+        out = subprocess.check_output(
+            ["ps", "-eo", "rss=,comm=,args="],
+            text=True,
+            errors="replace",
+        )
+        for line in out.splitlines():
+            parts = line.strip().split(None, 2)
+            if len(parts) < 2:
+                continue
+            try:
+                rss_kb = int(parts[0])
+            except ValueError:
+                continue
+            if rss_kb < 2048:
+                continue
+            comm = parts[1]
+            args = parts[2] if len(parts) > 2 else comm
+            name = friendly_app_name(comm, args)
+            entry = grouped.setdefault(name, {"kb": 0, "procs": 0})
+            entry["kb"] += rss_kb
+            entry["procs"] += 1
+    except Exception:
+        return []
+
+    ranked = sorted(grouped.items(), key=lambda kv: kv[1]["kb"], reverse=True)[:limit]
+    res = []
+    for name, info in ranked:
+        mb = round(info["kb"] / 1024.0)
+        size_str = f"{mb / 1024.0:.2f} ГБ" if mb >= 1024 else f"{mb} МБ"
+        pct = round(100.0 * mb / max(1.0, total_mb), 1)
+        res.append({
+            "name": name,
+            "mb": mb,
+            "size": size_str,
+            "pct": pct,
+            "procs": info["procs"],
+        })
+    return res
+
+def get_gpu():
+    try:
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            timeout=1.5,
+        ).strip().splitlines()[0]
+        parts = [p.strip() for p in out.split(",")]
+        name = parts[0].replace("NVIDIA GeForce ", "")
+        util = round(float(parts[1]))
+        temp = round(float(parts[2]))
+        vused = round(float(parts[3]) / 1024.0, 1)
+        vtotal = round(float(parts[4]) / 1024.0, 1)
+        vpct = round(100.0 * float(parts[3]) / max(1.0, float(parts[4])))
+        return {
+            "name": name,
+            "pct": util,
+            "temp": temp,
+            "vram_used_gb": vused,
+            "vram_total_gb": vtotal,
+            "vram_pct": vpct,
+        }
+    except Exception:
+        return {"name": "GPU", "pct": 0, "temp": 0, "vram_used_gb": 0.0, "vram_total_gb": 0.0, "vram_pct": 0}
+
+ram = get_ram()
+print(json.dumps({
+    "cpu_pct": get_cpu_pct(),
+    "cpu_temp": get_cpu_temp(),
+    "ram": ram,
+    "ram_top": get_top_ram_apps(ram["total_mb"], 7),
+    "gpu": get_gpu(),
+}, ensure_ascii=False))

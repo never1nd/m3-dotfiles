@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -u
+cmd="${1:-get}"
+target="${2:-100}"
+
+# 1. Laptop built-in panel (/sys/class/backlight/*) via brightnessctl
+if command -v brightnessctl >/dev/null 2>&1 && [ -n "$(ls -A /sys/class/backlight 2>/dev/null)" ]; then
+    case "$cmd" in
+        get)
+            brightnessctl -m 2>/dev/null | head -n 1 | awk -F, '{gsub(/%/,"",$4); print $4}' || echo "100"
+            ;;
+        set)
+            [ "$target" -lt 5 ] && target=5
+            [ "$target" -gt 100 ] && target=100
+            brightnessctl -q set "${target}%" 2>/dev/null || true
+            ;;
+    esac
+    exit 0
+fi
+
+# 2. Desktop external monitor via hardware DDC/CI (ddcutil + flock)
+BUS_CACHE="/tmp/m3-ddc-bus"
+VAL_CACHE="/tmp/m3-ddc-val"
+LOCK_FILE="/tmp/m3-ddc.lock"
+
+get_bus() {
+    if [ -f "$BUS_CACHE" ]; then
+        cat "$BUS_CACHE"
+        return
+    fi
+    local b
+    b="$(ddcutil detect --brief 2>/dev/null | grep -oE '/dev/i2c-[0-9]+' | head -n 1 | grep -oE '[0-9]+' || true)"
+    if [ -n "$b" ]; then
+        echo "$b" > "$BUS_CACHE"
+        echo "$b"
+    fi
+}
+
+BUS="$(get_bus)"
+if [ -z "$BUS" ]; then
+    echo "100"
+    exit 0
+fi
+
+case "$cmd" in
+    get)
+        exec 9>"$LOCK_FILE"
+        if flock -w 2 9; then
+            val="$(ddcutil --bus "$BUS" getvcp 10 --brief 2>/dev/null | awk '{print $4}' || true)"
+            if [[ "$val" =~ ^[0-9]+$ ]]; then
+                echo "$val" > "$VAL_CACHE"
+                echo "$val"
+                exit 0
+            fi
+        fi
+        if [ -f "$VAL_CACHE" ]; then
+            cat "$VAL_CACHE"
+        else
+            echo "100"
+        fi
+        ;;
+    set)
+        if [ "$target" -lt 5 ]; then target=5; fi
+        if [ "$target" -gt 100 ]; then target=100; fi
+        echo "$target" > "$VAL_CACHE"
+        exec 9>"$LOCK_FILE"
+        flock 9
+        latest="$(cat "$VAL_CACHE" 2>/dev/null || echo "$target")"
+        ddcutil --bus "$BUS" setvcp 10 "$latest" >/dev/null 2>&1 || true
+        ;;
+esac

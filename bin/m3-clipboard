@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+if pgrep -x rofi >/dev/null 2>&1; then
+    pkill -x rofi
+    exit 0
+fi
+
+cliphist list | rofi -dmenu -i -p "Буфер" -theme ~/.config/rofi/m3-expressive.rasi | cliphist decode | wl-copy

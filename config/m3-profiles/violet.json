@@ -1,0 +1,12 @@
+{
+  "id": "violet",
+  "name": "Фиолетовый",
+  "accent_preview": "#d0bdfd",
+  "wallpaper": "__HOME__/Изображения/Wallpapers/535592.jpg",
+  "color_source": "wallpaper",
+  "scheme": "scheme-content",
+  "mode": "dark",
+  "icon_base": "Tela-circle-purple",
+  "tg_style": "sakura",
+  "fastfetch_logo": "__HOME__/.config/fastfetch/kotomi.png"
+}

@@ -1,0 +1,22 @@
+configuration {
+    modi: "drun,run,window";
+    show-icons: true;
+    icon-theme: "Tela-circle-purple-dark";
+    display-drun: "Приложения";
+    display-run: "Команды";
+    display-window: "Окна";
+    drun-display-format: "{name}";
+    disable-history: false;
+    sorting-method: "fzf";
+    matching: "fuzzy";
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+    kb-remove-to-eol: "";
+    kb-accept-entry: "Return,KP_Enter";
+    kb-row-up: "Up,Control+k,Control+p";
+    kb-row-down: "Down,Control+j,Control+n";
+    kb-cancel: "Escape,Control+g,Control+bracketleft";
+}
+
+@theme "~/.config/rofi/m3-expressive.rasi"

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PROF_DIR="$HOME/.config/m3-profiles"
+ACTIVE_FILE="$PROF_DIR/active"
+CUR="violet"
+[[ -f "$ACTIVE_FILE" ]] && CUR="$(tr -d '[:space:]' < "$ACTIVE_FILE")"
+
+TARGET="${1:-toggle}"
+if [[ "$TARGET" == "status" ]]; then
+  echo "$CUR"
+  exit 0
+elif [[ "$TARGET" == "toggle" ]]; then
+  case "$CUR" in
+    violet) TARGET="blue" ;;
+    blue)   TARGET="forest" ;;
+    forest) TARGET="peach" ;;
+    *)      TARGET="violet" ;;
+  esac
+fi
+
+if [[ ! -f "$PROF_DIR/${TARGET}.json" ]]; then
+  echo "Unknown profile: $TARGET (available: violet, blue, peach, forest)" >&2
+  exit 1
+fi
+
+shift || true
+exec "$HOME/.local/bin/m3-apply-wallpaper" --profile "$TARGET" "$@"

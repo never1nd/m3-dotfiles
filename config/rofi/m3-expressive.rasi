@@ -1,0 +1,142 @@
+@import "~/.config/rofi/m3-colors.rasi"
+
+/* Material Design 3 Expressive Dialog Launcher
+ * Strict v34.0.0 Shape Scale & Optical Roundness:
+ *   - Dialog container: ExtraLarge (28px), padding 20px
+ *   - Search bar:       Full pill (28px), surface_container_highest
+ *   - List items:       Large (16px), primary_container selection + bold emphasized text
+ *   - Mode switcher:    Connected Segmented Pill Bar, secondary_container active segment
+ */
+
+* {
+    font: "Roboto Flex Medium 11.5";
+    background-color: transparent;
+    text-color: @m3-on-surface;
+    margin: 0;
+    padding: 0;
+    spacing: 0;
+}
+
+window {
+    location: center;
+    anchor: center;
+    width: 640px;
+    border-radius: 28px;
+    border: 1px solid;
+    border-color: @m3-outline-variant;
+    background-color: @m3-surface-container;
+    padding: 20px;
+}
+
+mainbox {
+    orientation: vertical;
+    spacing: 14px;
+    children: [ inputbar, listview, mode-switcher ];
+}
+
+/* M3 Expressive Full-Pill Search Bar */
+inputbar {
+    orientation: horizontal;
+    spacing: 12px;
+    padding: 6px 18px 6px 6px;
+    border-radius: 28px;
+    background-color: @m3-surface-container-highest;
+    children: [ textbox-search-icon, entry ];
+}
+
+textbox-search-icon {
+    expand: false;
+    str: "search";
+    font: "Material Symbols Rounded 16";
+    padding: 8px 12px;
+    border-radius: 22px;
+    background-color: @m3-primary-container;
+    text-color: @m3-on-primary-container;
+    vertical-align: 0.5;
+    horizontal-align: 0.5;
+}
+
+entry {
+    font: "Roboto Flex Bold 13";
+    placeholder: "Поиск приложений...";
+    placeholder-color: @m3-on-surface-variant;
+    text-color: @m3-on-surface;
+    cursor: text;
+    vertical-align: 0.5;
+}
+
+/* Expressive App Cards List (Large 16px rows) */
+listview {
+    lines: 7;
+    columns: 1;
+    fixed-height: false;
+    dynamic: true;
+    scrollbar: false;
+    spacing: 4px;
+    padding: 2px 0px;
+}
+
+element {
+    orientation: horizontal;
+    spacing: 14px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background-color: transparent;
+    text-color: @m3-on-surface;
+    cursor: pointer;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color: @m3-on-surface;
+}
+
+element selected.normal,
+element selected.active {
+    background-color: @m3-primary-container;
+    text-color: @m3-on-primary-container;
+}
+
+element-icon {
+    size: 32px;
+    cursor: inherit;
+    vertical-align: 0.5;
+}
+
+element-text {
+    font: "Roboto Flex Medium 12";
+    text-color: inherit;
+    vertical-align: 0.5;
+    cursor: inherit;
+}
+
+element-text selected {
+    font: "Roboto Flex Bold 12";
+    text-color: @m3-on-primary-container;
+}
+
+/* M3 Expressive Connected Segmented Mode Switcher */
+mode-switcher {
+    orientation: horizontal;
+    spacing: 6px;
+    padding: 4px;
+    border-radius: 24px;
+    background-color: @m3-surface-container-high;
+}
+
+button {
+    font: "Roboto Flex Bold 10.5";
+    padding: 8px 14px;
+    border-radius: 20px;
+    background-color: transparent;
+    text-color: @m3-on-surface-variant;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    cursor: pointer;
+}
+
+button selected {
+    background-color: @m3-secondary-container;
+    text-color: @m3-on-secondary-container;
+}

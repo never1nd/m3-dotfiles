@@ -1,0 +1,19 @@
+// ────────────── Input Configuration ──────────────
+input {
+    keyboard {
+        xkb {
+        }
+        numlock
+    }
+
+    touchpad {
+        tap
+        natural-scroll
+    }
+
+    mouse {
+    }
+
+    // focus-follows-mouse disabled so moving mouse near screen edges never switches/scrolls windows
+    workspace-auto-back-and-forth
+}

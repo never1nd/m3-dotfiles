@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+import json
+import pathlib
+import subprocess
+import time
+
+def read_net_bytes(iface: str):
+    try:
+        for line in pathlib.Path("/proc/net/dev").read_text().splitlines()[2:]:
+            name, rest = line.split(":", 1)
+            if name.strip() == iface:
+                cols = rest.split()
+                return int(cols[0]), int(cols[8])
+    except Exception:
+        pass
+    return 0, 0
+
+def get_speed_mbps(iface: str) -> str:
+    p = pathlib.Path(f"/sys/class/net/{iface}/speed")
+    try:
+        v = int(p.read_text().strip())
+        if v >= 1000:
+            return f"{v // 1000} Гбит/с"
+        if v > 0:
+            return f"{v} Мбит/с"
+    except Exception:
+        pass
+    return ""
+
+def fmt_rate(bps: float) -> str:
+    if bps >= 1024 * 1024:
+        return f"{bps / (1024 * 1024):.1f} МБ/с"
+    if bps >= 1024:
+        return f"{bps / 1024:.0f} КБ/с"
+    return f"{int(bps)} Б/с"
+
+def main():
+    # Parse devices & details from nmcli
+    raw = subprocess.check_output(
+        ["nmcli", "-t", "-f", "GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS", "dev", "show"],
+        text=True,
+        errors="replace",
+    )
+    blocks = [b.strip() for b in raw.strip().split("\n\n") if b.strip()]
+    primary = None
+    vpn = None
+    has_wifi = False
+
+    for b in blocks:
+        info = {}
+        for line in b.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                info.setdefault(k.strip(), v.strip())
+        dev = info.get("GENERAL.DEVICE", "")
+        typ = info.get("GENERAL.TYPE", "")
+        state = info.get("GENERAL.STATE", "")
+        conn = info.get("GENERAL.CONNECTION", "")
+        ip4 = info.get("IP4.ADDRESS[1]", "").split("/")[0]
+        gw = info.get("IP4.GATEWAY", "")
+        dns = info.get("IP4.DNS[1]", "")
+        if typ == "loopback" or dev == "lo":
+            continue
+        if typ == "wifi":
+            has_wifi = True
+        connected = "100" in state or "connected" in state.lower()
+        if typ in ("tun", "wireguard", "vpn") and connected:
+            vpn = {"device": dev, "name": conn or dev, "ip": ip4}
+        elif typ in ("ethernet", "wifi") and (primary is None or connected):
+            primary = {
+                "device": dev,
+                "type": typ,
+                "connected": connected,
+                "name": conn or dev,
+                "ip": ip4,
+                "gateway": gw,
+                "dns": dns,
+                "link_speed": get_speed_mbps(dev),
+            }
+
+    # Measure live RX/TX throughput over 200ms on primary interface
+    rx_rate, tx_rate = "0 Б/с", "0 Б/с"
+    if primary and primary["connected"]:
+        dev = primary["device"]
+        r1, t1 = read_net_bytes(dev)
+        time.sleep(0.2)
+        r2, t2 = read_net_bytes(dev)
+        rx_rate = fmt_rate(max(0, r2 - r1) / 0.2)
+        tx_rate = fmt_rate(max(0, t2 - t1) / 0.2)
+
+    # Saved connections (exclude loopback & external tun)
+    con_raw = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE,ACTIVE,DEVICE", "con", "show"], text=True, errors="replace")
+    conns = []
+    for line in con_raw.splitlines():
+        parts = line.split(":")
+        if len(parts) < 4:
+            continue
+        name, ctype, active, cdev = parts[0], parts[1], parts[2], parts[3]
+        if ctype in ("loopback", "tun") or name == "lo":
+            continue
+        conns.append({
+            "name": name,
+            "type": ctype,
+            "active": active == "yes",
+            "device": cdev,
+        })
+
+    # Global networking enabled?
+    net_on = subprocess.check_output(["nmcli", "networking"], text=True).strip() == "enabled"
+
+    print(json.dumps({
+        "networking": net_on,
+        "has_wifi": has_wifi,
+        "primary": primary,
+        "vpn": vpn,
+        "rx": rx_rate,
+        "tx": tx_rate,
+        "connections": conns,
+    }, ensure_ascii=False))
+
+if __name__ == "__main__":
+    main()

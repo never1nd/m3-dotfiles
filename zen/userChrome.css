@@ -1,0 +1,35 @@
+@import url("m3-colors.css");
+
+/* Material Design 3 Expressive styling for Zen Browser */
+:root {
+    --zen-primary-color: var(--m3-primary) !important;
+    --zen-main-browser-background: var(--m3-surface) !important;
+    --zen-main-browser-background-toolbar: var(--m3-surface-container-low) !important;
+    --toolbar-bgcolor: var(--m3-surface-container-low) !important;
+    --toolbar-field-background-color: var(--m3-surface-container-highest) !important;
+    --toolbar-field-focus-background-color: var(--m3-surface-container-highest) !important;
+    --toolbar-field-border-color: var(--m3-outline-variant) !important;
+    --toolbar-field-focus-border-color: var(--m3-primary) !important;
+    --arrowpanel-background: var(--m3-surface-container-high) !important;
+    --arrowpanel-border-color: var(--m3-outline-variant) !important;
+    --arrowpanel-border-radius: 24px !important;
+    --tab-border-radius: 16px !important;
+}
+
+#urlbar-background {
+    border-radius: 9999px !important;
+    background-color: var(--m3-surface-container-highest) !important;
+}
+
+.tabbrowser-tab[selected="true"] .tab-background {
+    background-color: var(--m3-primary-container) !important;
+    border-radius: 16px !important;
+}
+
+menupopup,
+panel[type="arrow"] {
+    --panel-border-radius: 24px !important;
+}
+
+/* Hide window minimize/maximize/close buttons */
+.titlebar-buttonbox-container { display: none !important; }

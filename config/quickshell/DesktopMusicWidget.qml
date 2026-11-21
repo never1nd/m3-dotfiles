@@ -1,0 +1,617 @@
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Services.Mpris
+
+/* Material Design 3 Expressive Desktop Music Player Widget
+ * - Pinned to EVERY workspace on WlrLayer.Bottom (strictly behind Niri's carousel!)
+ * - Top-right quarter (x=1000..1880, y=52..540), symmetrically paired above DesktopTerminalCard + kitty-desktop
+ * - Auto-hides cleanly whenever no music is playing!
+ * - Pulls album cover art, metadata, source identity (Pear Desktop / Telegram / etc.),
+ *   M3 Expressive Wavy Scrubber, and live synced karaoke lyrics via LRCLIB!
+ */
+PanelWindow {
+    id: musicWin
+
+    readonly property var playersList: Mpris.players.values || []
+    readonly property var activePlayer: {
+        if (!playersList || playersList.length === 0) return null
+        for (let i = 0; i < playersList.length; i++) {
+            if (playersList[i] && playersList[i].isPlaying) return playersList[i]
+        }
+        return null
+    }
+
+    // Strictly hide when music is not playing!
+    readonly property bool musicPlaying: activePlayer !== null && !!activePlayer.isPlaying && (activePlayer.trackTitle || "") !== ""
+
+    property bool animShown: false
+    visible: musicPlaying || hideTimer.running
+
+    onMusicPlayingChanged: {
+        if (musicPlaying) {
+            hideTimer.stop()
+            showTick.restart()
+            fetchLyricsForCurrent()
+        } else {
+            animShown = false
+            hideTimer.restart()
+        }
+    }
+
+    Timer { id: showTick; interval: 10; onTriggered: musicWin.animShown = true }
+    Timer { id: hideTimer; interval: 260 }
+
+    anchors {
+        top: true
+        right: true
+    }
+    margins {
+        top: 52
+        right: 40
+    }
+    implicitWidth: 880
+    implicitHeight: 488
+    exclusiveZone: -1
+    color: "transparent"
+    WlrLayershell.layer: WlrLayer.Bottom
+    WlrLayershell.namespace: "m3-desktop-music"
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    // ─── Live Synced Lyrics State ───
+    property string lastTrackKey: ""
+    property bool lyricsLoading: false
+    property bool lyricsSynced: false
+    property bool lyricsInstrumental: false
+    property var lyricsLines: []
+    property double livePos: 0
+    property int activeLyricIndex: -1
+
+    function fetchLyricsForCurrent() {
+        if (!activePlayer) return
+        const t = activePlayer.trackTitle || ""
+        const a = activePlayer.trackArtist || ""
+        const key = a + "||" + t
+        if (t === "" || key === lastTrackKey) return
+        lastTrackKey = key
+        lyricsLoading = true
+        lyricsLines = []
+        activeLyricIndex = -1
+        lyricsProc.running = false
+        lyricsProc.command = ["__HOME__/.local/bin/m3-lyrics-fetch", a, t]
+        lyricsProc.running = true
+    }
+
+    function updateActiveLyric() {
+        if (!lyricsSynced || !lyricsLines || lyricsLines.length === 0) {
+            activeLyricIndex = -1
+            return
+        }
+        const pos = livePos + 0.25 // slight lookahead for natural sing-along feel
+        let idx = -1
+        for (let i = 0; i < lyricsLines.length; i++) {
+            if (lyricsLines[i].time <= pos) idx = i
+            else break
+        }
+        if (idx !== activeLyricIndex) {
+            activeLyricIndex = idx
+            if (idx >= 0) lyricsList.positionViewAtIndex(idx, ListView.Center)
+        }
+    }
+
+    Connections {
+        target: musicWin.activePlayer
+        function onTrackTitleChanged() {
+            musicWin.livePos = 0
+            musicWin.fetchLyricsForCurrent()
+        }
+        function onTrackArtistChanged() {
+            musicWin.fetchLyricsForCurrent()
+        }
+        function onPositionChanged() {
+            if (musicWin.activePlayer) {
+                const p = musicWin.activePlayer.position
+                if (typeof p === "number" && !isNaN(p) && p >= 0) {
+                    musicWin.livePos = p
+                    musicWin.updateActiveLyric()
+                }
+            }
+        }
+    }
+
+    Timer {
+        interval: 250
+        running: musicWin.visible && musicWin.musicPlaying
+        repeat: true
+        onTriggered: {
+            if (!musicWin.activePlayer) return
+            musicWin.activePlayer.positionChanged()
+            musicWin.livePos += 0.25
+            musicWin.updateActiveLyric()
+        }
+    }
+
+    Process {
+        id: lyricsProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                musicWin.lyricsLoading = false
+                try {
+                    const d = JSON.parse(text.trim() || "{}")
+                    musicWin.lyricsSynced = !!d.synced
+                    musicWin.lyricsInstrumental = !!d.instrumental
+                    musicWin.lyricsLines = d.lines || []
+                    musicWin.updateActiveLyric()
+                } catch (e) {
+                    musicWin.lyricsSynced = false
+                    musicWin.lyricsLines = []
+                }
+            }
+        }
+    }
+
+    // Reusable Expressive Transport Button
+    component DeskMediaBtn: Rectangle {
+        id: dmb
+        property string iconName: ""
+        property int btnSize: 40
+        property int iconSize: 20
+        signal triggered()
+
+        width: btnSize
+        height: btnSize
+        radius: dmbA.pressed ? 10 : (dmbA.containsMouse ? 13 : btnSize / 2)
+        color: Theme.mode === "light"
+            ? (dmbA.containsMouse ? Theme.primaryContainer : Theme.secondaryContainer)
+            : (dmbA.containsMouse ? Theme.secondaryContainer : Theme.surfaceContainerHigh)
+        border.width: 1
+        border.color: Theme.mode === "light"
+            ? Theme.alpha(Theme.outline, 0.28)
+            : Theme.alpha(Theme.outlineVariant, 0.22)
+        scale: dmbA.pressed ? 0.90 : (dmbA.containsMouse ? 1.06 : 1.0)
+
+        Behavior on radius { SpringAnimation { spring: 5.5; damping: 0.36 } }
+        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on scale { SpringAnimation { spring: 6.0; damping: 0.40 } }
+
+        M3Icon {
+            anchors.centerIn: parent
+            name: dmb.iconName
+            size: dmb.iconSize
+            filled: true
+            color: Theme.mode === "light"
+                ? (dmbA.containsMouse ? Theme.fgPrimaryContainer : Theme.fgSecondaryContainer)
+                : (dmbA.containsMouse ? Theme.fgSecondaryContainer : Theme.fgSurface)
+        }
+
+        MouseArea {
+            id: dmbA
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: dmb.triggered()
+        }
+    }
+
+    // ─── Main Material Design 3 Expressive Card (28px ExtraLarge, 2-Column Layout!) ───
+    Rectangle {
+        id: card
+        anchors.fill: parent
+        radius: 28
+        color: Theme.alpha(Theme.surfaceContainer, 0.90)
+        border.width: 1
+        border.color: Theme.alpha(Theme.outlineVariant, 0.44)
+        clip: true
+
+        opacity: musicWin.animShown ? 1.0 : 0.0
+        scale: musicWin.animShown ? 1.0 : 0.95
+        transformOrigin: Item.TopRight
+
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on scale { SpringAnimation { spring: 4.6; damping: 0.36; epsilon: 0.002 } }
+        Behavior on color { ColorAnimation { duration: 220 } }
+
+        // Subtle ambient tonal wash from tertiary_container (M3 Expressive editorial depth!)
+        Rectangle {
+            anchors.fill: parent
+            radius: 28
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Theme.alpha(Theme.tertiaryContainer, 0.30) }
+                GradientStop { position: 0.48; color: Theme.alpha(Theme.primaryContainer, 0.16) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 22
+
+            // ═══════════════════════════════════════════════════
+            // LEFT COLUMN: Source Pill + Cover Art + Title + Wavy Scrubber + Controls
+            // ═══════════════════════════════════════════════════
+            ColumnLayout {
+                Layout.preferredWidth: 360
+                Layout.fillHeight: true
+                spacing: 12
+
+                // Source App Badge + Live Mini Wave
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        height: 28
+                        implicitWidth: srcRow.implicitWidth + 20
+                        radius: 14
+                        color: Theme.tertiaryContainer
+
+                        Row {
+                            id: srcRow
+                            anchors.centerIn: parent
+                            spacing: 7
+
+                            // 3-bar mini wave
+                            Row {
+                                id: deskWave
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                height: 12
+                                property real ph: 0.0
+                                Timer {
+                                    interval: 50
+                                    running: musicWin.visible && musicWin.musicPlaying
+                                    repeat: true
+                                    onTriggered: deskWave.ph = (deskWave.ph + 0.35) % (Math.PI * 2)
+                                }
+                                Repeater {
+                                    model: [0.0, 2.0, 4.0]
+                                    delegate: Rectangle {
+                                        required property real modelData
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 2.5; radius: 1.5
+                                        height: 4 + 7 * (0.5 + 0.5 * Math.sin(deskWave.ph + modelData))
+                                        color: Theme.fgTertiaryContainer
+                                    }
+                                }
+                            }
+
+                            M3Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: 1
+                                role: "labelEmphasized"
+                                customSize: 11
+                                text: { const id = musicWin.activePlayer ? (musicWin.activePlayer.identity || "Музыка") : "Музыка"; return id.indexOf("youtube-music") !== -1 ? "Pear Desktop" : id }
+                                color: Theme.fgTertiaryContainer
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Album chip if available
+                    M3Text {
+                        visible: musicWin.activePlayer && (musicWin.activePlayer.trackAlbum || "") !== ""
+                        role: "label"
+                        customSize: 11
+                        text: musicWin.activePlayer ? (musicWin.activePlayer.trackAlbum || "") : ""
+                        color: Theme.fgSurfaceVariant
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: 165
+                    }
+                }
+
+                // Hero Album Cover Art (210x210, ExtraLarge 24px!)
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 210
+                    height: 210
+                    radius: 24
+                    color: Theme.alpha(Theme.primaryContainer, 0.55)
+                    border.width: 1
+                    border.color: Theme.alpha(Theme.primary, 0.28)
+                    clip: true
+
+                    Image {
+                        id: coverArt
+                        anchors.fill: parent
+                        source: musicWin.activePlayer ? (musicWin.activePlayer.trackArtUrl || "") : ""
+                        fillMode: Image.PreserveAspectCrop
+                        smooth: true
+                        mipmap: true
+                        visible: status === Image.Ready
+                    }
+
+                    M3Icon {
+                        anchors.centerIn: parent
+                        visible: !coverArt.visible
+                        name: "album"
+                        size: 72
+                        filled: true
+                        color: Theme.fgPrimaryContainer
+                    }
+                }
+
+                // Track Title + Artist
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    M3Text {
+                        role: "headline"
+                        customSize: 17
+                        text: musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "") : ""
+                        color: Theme.fgSurface
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    M3Text {
+                        role: "label"
+                        customSize: 12
+                        text: musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : ""
+                        color: Theme.primary
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                // Large Material Design 3 Expressive Wavy Audio Scrubber
+                M3WavyScrubber {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    player: musicWin.activePlayer
+                    activeColor: Theme.primary
+                    inactiveColor: Theme.alpha(Theme.fgSurfaceVariant, 0.28)
+                    textColor: Theme.fgSurfaceVariant
+                    activeAnimation: musicWin.animShown
+                    showTimestamps: true
+                    trackBoxHeight: 32
+                    strokeW: 4.5
+                    maxWaveAmp: 3.6
+                    wavelength: 38.0
+                    thumbBaseW: 5.0
+                    thumbBaseH: 24.0
+                    timeFontSize: 12
+                }
+
+                // Expressive M3 Large Transport Row (-10s · Prev · Hero Play/Pause Squircle · Next · +10s)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 10
+
+                    Item { Layout.fillWidth: true }
+
+                    DeskMediaBtn {
+                        iconName: "replay_10"
+                        btnSize: 46
+                        iconSize: 23
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.seek(-10)
+                    }
+
+                    DeskMediaBtn {
+                        iconName: "skip_previous"
+                        btnSize: 52
+                        iconSize: 27
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                    }
+
+                    // Hero M3 Expressive Morphing Squircle Play/Pause Button (XL 108x68)
+                    Rectangle {
+                        Layout.preferredWidth: 108
+                        Layout.preferredHeight: 68
+                        width: 108
+                        height: 68
+                        radius: dPlayA.pressed ? 16 : 24
+                        color: Theme.primary
+                        scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.06 : 1.0)
+
+                        Behavior on radius { SpringAnimation { spring: 5.2; damping: 0.34 } }
+                        Behavior on scale { SpringAnimation { spring: 6.0; damping: 0.38 } }
+                        Behavior on color { ColorAnimation { duration: 180 } }
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Rectangle {
+                                width: 9
+                                height: 28
+                                radius: 4.5
+                                color: Theme.fgPrimary
+                            }
+                            Rectangle {
+                                width: 9
+                                height: 28
+                                radius: 4.5
+                                color: Theme.fgPrimary
+                            }
+                        }
+
+                        MouseArea {
+                            id: dPlayA
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (musicWin.activePlayer) musicWin.activePlayer.togglePlaying()
+                        }
+                    }
+
+                    DeskMediaBtn {
+                        iconName: "skip_next"
+                        btnSize: 52
+                        iconSize: 27
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.next()
+                    }
+
+                    DeskMediaBtn {
+                        iconName: "forward_10"
+                        btnSize: 46
+                        iconSize: 23
+                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.seek(10)
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+            }
+
+            // Subtle tonal divider
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                Layout.topMargin: 8
+                Layout.bottomMargin: 8
+                color: Theme.alpha(Theme.outlineVariant, 0.38)
+            }
+
+            // ═══════════════════════════════════════════════════
+            // RIGHT COLUMN: Live YouTube-Music-Style Synced Lyrics Canvas
+            // ═══════════════════════════════════════════════════
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    M3Icon {
+                        name: "lyrics"
+                        size: 18
+                        filled: true
+                        color: Theme.tertiary
+                    }
+
+                    M3Text {
+                        role: "title"
+                        customSize: 14
+                        text: musicWin.lyricsSynced ? "Текст песни · Синхронизация" : "Текст песни"
+                        color: Theme.fgSurface
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                        visible: musicWin.lyricsSynced
+                        height: 22
+                        implicitWidth: syncLbl.implicitWidth + 14
+                        radius: 11
+                        color: Theme.primaryContainer
+                        M3Text {
+                            id: syncLbl
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: 1
+                            role: "labelEmphasized"
+                            customSize: 10
+                            text: "LIVE"
+                            color: Theme.fgPrimaryContainer
+                        }
+                    }
+                }
+
+                // Synced / Plain Lyrics Scroll Container
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 20
+                    color: Theme.alpha(Theme.surfaceContainerLow, 0.65)
+                    clip: true
+
+                    ListView {
+                        id: lyricsList
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 10
+                        clip: true
+                        model: musicWin.lyricsLines
+                        visible: musicWin.lyricsLines.length > 0
+
+                        delegate: Item {
+                            required property var modelData
+                            required property int index
+                            readonly property bool isCurrent: musicWin.lyricsSynced && index === musicWin.activeLyricIndex
+                            readonly property bool isPast: musicWin.lyricsSynced && index < musicWin.activeLyricIndex
+
+                            width: lyricsList.width
+                            implicitHeight: lyrTxt.implicitHeight + 10
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                radius: 14
+                                color: isCurrent
+                                    ? Theme.alpha(Theme.primaryContainer, 0.42)
+                                    : (lyrA.containsMouse && modelData.time >= 0 ? Theme.alpha(Theme.fgSurface, 0.07) : "transparent")
+                                Behavior on color { ColorAnimation { duration: 180 } }
+                            }
+
+                            M3Text {
+                                id: lyrTxt
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 6
+                                role: isCurrent ? "headline" : "title"
+                                customSize: isCurrent ? 18 : 14
+                                emphasized: isCurrent
+                                text: modelData.text
+                                wrapMode: Text.WordWrap
+                                color: isCurrent ? Theme.fgSurface : (isPast ? Theme.fgSurfaceVariant : Theme.fgSurface)
+                                opacity: musicWin.lyricsSynced ? (isCurrent ? 1.0 : (isPast ? 0.38 : 0.62)) : 0.90
+
+                                Behavior on opacity { NumberAnimation { duration: 220 } }
+                                Behavior on color { ColorAnimation { duration: 200 } }
+                            }
+
+                            MouseArea {
+                                id: lyrA
+                                anchors.fill: parent
+                                hoverEnabled: modelData.time >= 0
+                                cursorShape: modelData.time >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (musicWin.activePlayer && modelData.time >= 0) {
+                                        musicWin.activePlayer.position = modelData.time
+                                        musicWin.livePos = modelData.time
+                                        musicWin.updateActiveLyric()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Loading / Instrumental / Not Found Empty States
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        visible: musicWin.lyricsLines.length === 0
+                        spacing: 8
+
+                        M3Icon {
+                            Layout.alignment: Qt.AlignHCenter
+                            name: musicWin.lyricsLoading ? "hourglass_top" : (musicWin.lyricsInstrumental ? "piano" : "music_note")
+                            size: 36
+                            filled: true
+                            color: Theme.alpha(Theme.primary, 0.72)
+                        }
+
+                        M3Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            role: "title"
+                            customSize: 13
+                            text: musicWin.lyricsLoading
+                                ? "Загрузка текста песни..."
+                                : (musicWin.lyricsInstrumental ? "Инструментальная композиция" : "Текст песни не найден")
+                            color: Theme.fgSurfaceVariant
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

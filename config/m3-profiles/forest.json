@@ -1,0 +1,32 @@
+{
+  "id": "forest",
+  "name": "Зеленый",
+  "accent_preview": "#477a4f",
+  "wallpaper": "__HOME__/Изображения/Wallpapers/Gemini_Generated_Image_v4svf0v4svf0v4sv.jpg",
+  "color_source": "#477a4f",
+  "scheme": "scheme-tonal-spot",
+  "mode": "dark",
+  "icon_base": "Tela-circle-green",
+  "tg_style": "forest-light",
+  "fastfetch_logo": "__HOME__/.config/fastfetch/mahoanime.png",
+  "palette_overrides": {
+    "light": {
+      "tertiary": "#526630",
+      "on_tertiary": "#ffffff",
+      "tertiary_container": "#d5eca8",
+      "on_tertiary_container": "#141f00",
+      "tertiary_fixed": "#d5eca8",
+      "tertiary_fixed_dim": "#b9cf8e",
+      "on_tertiary_fixed": "#141f00",
+      "on_tertiary_fixed_variant": "#3b4d1b"
+    },
+    "dark": {
+      "tertiary": "#b9cf8e",
+      "on_tertiary": "#253606",
+      "tertiary_container": "#3b4d1b",
+      "on_tertiary_container": "#d5eca8",
+      "tertiary_fixed": "#d5eca8",
+      "tertiary_fixed_dim": "#b9cf8e"
+    }
+  }
+}

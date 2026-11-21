@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+if pgrep -x rofi >/dev/null 2>&1; then
+    pkill -x rofi
+    exit 0
+fi
+
+choice=$(printf "Content (Точная гармоничная палитра из обоев)\nTonal Spot (Мягкий стандарт M3)\nVibrant (Насыщенные акценты)\nFidelity (Высокая точность)\nExpressive (Контрастный поворот оттенка)" | \
+    rofi -dmenu -i -p "Схема HCT" -theme ~/.config/rofi/m3-expressive.rasi)
+
+case "$choice" in
+    Content*)    __HOME__/.local/bin/m3-apply-wallpaper --scheme scheme-content --no-wallpaper ;;
+    Tonal*)      __HOME__/.local/bin/m3-apply-wallpaper --scheme scheme-tonal-spot --no-wallpaper ;;
+    Vibrant*)    __HOME__/.local/bin/m3-apply-wallpaper --scheme scheme-vibrant --no-wallpaper ;;
+    Fidelity*)   __HOME__/.local/bin/m3-apply-wallpaper --scheme scheme-fidelity --no-wallpaper ;;
+    Expressive*) __HOME__/.local/bin/m3-apply-wallpaper --scheme scheme-expressive --no-wallpaper ;;
+esac

@@ -1,0 +1,32 @@
+{
+  "id": "blue",
+  "name": "Синий",
+  "accent_preview": "#adc6ff",
+  "wallpaper": "__HOME__/Изображения/Wallpapers/rintaro-okabe-steins-gate-3840x2160-16184.jpg",
+  "color_source": "#445e91",
+  "scheme": "scheme-tonal-spot",
+  "mode": "dark",
+  "icon_base": "Tela-circle-nord",
+  "tg_style": "slate-blue",
+  "palette_overrides": {
+    "dark": {
+      "tertiary": "#9ecae0",
+      "on_tertiary": "#093547",
+      "tertiary_container": "#244c5e",
+      "on_tertiary_container": "#d1eeff",
+      "tertiary_fixed": "#d1eeff",
+      "tertiary_fixed_dim": "#9ecae0",
+      "on_tertiary_fixed": "#001f2b",
+      "on_tertiary_fixed_variant": "#244c5e"
+    },
+    "light": {
+      "tertiary": "#2d5f75",
+      "on_tertiary": "#ffffff",
+      "tertiary_container": "#c4e8fb",
+      "on_tertiary_container": "#001f2b",
+      "tertiary_fixed": "#c4e8fb",
+      "tertiary_fixed_dim": "#9ecae0"
+    }
+  },
+  "fastfetch_logo": "__HOME__/.config/fastfetch/dango.png"
+}

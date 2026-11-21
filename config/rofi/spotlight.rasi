@@ -1,0 +1,106 @@
+* {
+    bg-glass:       rgba(18, 20, 28, 0.78);
+    bg-input:       rgba(255, 255, 255, 0.06);
+    bg-selected:    rgba(137, 180, 250, 0.20);
+    bg-hover:       rgba(255, 255, 255, 0.07);
+    border-glass:   rgba(255, 255, 255, 0.14);
+    border-accent:  rgba(137, 180, 250, 0.55);
+    fg-primary:     #f2f4fa;
+    fg-muted:       rgba(235, 239, 250, 0.50);
+    accent:         #89b4fa;
+
+    font: "Inter 11.5";
+    background-color: transparent;
+    text-color: @fg-primary;
+    margin: 0;
+    padding: 0;
+    spacing: 0;
+}
+
+window {
+    location: center;
+    anchor: center;
+    width: 620px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: @border-glass;
+    background-color: @bg-glass;
+    padding: 16px;
+}
+
+mainbox {
+    orientation: vertical;
+    spacing: 12px;
+    children: [ inputbar, listview ];
+}
+
+inputbar {
+    orientation: horizontal;
+    spacing: 12px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid;
+    border-color: @border-glass;
+    background-color: @bg-input;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    font: "JetBrainsMono Nerd Font 13";
+    text-color: @accent;
+    vertical-align: 0.5;
+}
+
+entry {
+    font: "Inter Medium 13";
+    placeholder: "Поиск приложений...";
+    placeholder-color: @fg-muted;
+    cursor: text;
+    vertical-align: 0.5;
+}
+
+listview {
+    lines: 7;
+    columns: 1;
+    fixed-height: false;
+    dynamic: true;
+    scrollbar: false;
+    spacing: 4px;
+    padding: 2px 0px;
+}
+
+element {
+    orientation: horizontal;
+    spacing: 14px;
+    padding: 9px 14px;
+    border-radius: 12px;
+    border: 1px solid;
+    border-color: transparent;
+    background-color: transparent;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color: @fg-primary;
+}
+
+element selected.normal,
+element selected.active {
+    background-color: @bg-selected;
+    border-color: @border-accent;
+    text-color: #ffffff;
+}
+
+element-icon {
+    size: 30px;
+    vertical-align: 0.5;
+    background-color: transparent;
+}
+
+element-text {
+    font: "Inter 11.5";
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+}
