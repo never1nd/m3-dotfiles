@@ -15,38 +15,71 @@ import Quickshell.Services.Mpris
 PanelWindow {
     id: musicWin
 
-    readonly property var playersList: Mpris.players.values || []
+    readonly property var playersList: {
+        const raw = Mpris.players.values || []
+        const filtered = []
+        for (let i = 0; i < raw.length; i++) {
+            const p = raw[i]
+            if (!p) continue
+            const bn = String(p.dbusName || "")
+            if (bn.indexOf("playerctld") !== -1) continue
+            filtered.push(p)
+        }
+        return filtered.length > 0 ? filtered : raw
+    }
     readonly property var activePlayer: {
         if (!playersList || playersList.length === 0) return null
-        // 1) Prefer any actively playing player
         for (let i = 0; i < playersList.length; i++) {
             if (playersList[i] && playersList[i].isPlaying) return playersList[i]
         }
-        // 2) Keep player with track metadata while paused or switching tracks
         for (let i = 0; i < playersList.length; i++) {
             if (playersList[i] && (playersList[i].trackTitle || "") !== "") return playersList[i]
         }
-        // 3) Fallback to first running music service
         return playersList[0] || null
     }
 
     onActivePlayerChanged: syncTrackCache()
 
-    readonly property bool isActuallyPlaying: activePlayer !== null && !!activePlayer.isPlaying
+    // Debounce brief 50-150ms Stopped/Paused dips during Chromium track skips so Play/Pause & wave never flicker!
+    readonly property bool rawPlaying: activePlayer !== null && !!activePlayer.isPlaying
+    property bool isActuallyPlaying: rawPlaying
+    onRawPlayingChanged: {
+        if (rawPlaying) {
+            pauseDebounceTimer.stop()
+            isActuallyPlaying = true
+        } else {
+            pauseDebounceTimer.restart()
+        }
+    }
+    Timer {
+        id: pauseDebounceTimer
+        interval: 220
+        repeat: false
+        onTriggered: musicWin.isActuallyPlaying = musicWin.rawPlaying
+    }
+
     // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
     readonly property bool hasMusicService: activePlayer !== null
 
-    // Rock-solid silky cover crossfade + M3 Expressive vertical text reveal (zero races!)
+    // ─── Synchronized 2-Phase Material 3 Expressive Track Slide-Out -> Wait-for-Art -> Slide-In ───
     property string displayedTitle: ""
     property string displayedArtist: ""
     property string displayedAlbum: ""
-    property string prevArtUrl: ""
-    property string curArtUrl: ""
+    property string displayedArtUrl: ""
 
-    property real coverFadeOpacity: 1.0
-    property real coverFadeScale: 1.0
-    property real textLiftY: 0
-    property real textOpacity: 1.0
+    property string pendingTitle: ""
+    property string pendingArtist: ""
+    property string pendingAlbum: ""
+    property string pendingArtUrl: ""
+    property string oldArtUrlBeforeSkip: ""
+
+    // State machine: "idle" | "exiting" | "waiting" | "entering"
+    property string swapPhase: "idle"
+    property int skipDir: 1   // +1 = Next (exits left, enters from right), -1 = Prev (exits right, enters from left)
+
+    property real stageX: 0
+    property real stageScale: 1.0
+    property real stageOpacity: 1.0
     property real lyricsOpacity: 1.0
     property real lyricsLiftY: 0
     property bool lyricsFetchedOnce: false
@@ -58,27 +91,33 @@ PanelWindow {
         lyricsRevealAnim.start()
     }
 
-    property bool pendingCoverAnim: false
-
-    function loadCoverSmooth(url) {
-        if (!url || url === "" || url === curArtUrl) return
-        if (curArtUrl === "") {
-            curArtUrl = url
-            prevArtUrl = url
-            coverFadeOpacity = 1.0
-            coverFadeScale = 1.0
-            pendingCoverAnim = false
-            return
+    function beginTrackExit(dir) {
+        skipDir = dir || 1
+        oldArtUrlBeforeSkip = displayedArtUrl
+        swapWaitTimer.stop()
+        slideInAnim.stop()
+        if (swapPhase === "idle" || swapPhase === "entering") {
+            swapPhase = "exiting"
+            slideOutAnim.restart()
         }
-        coverCrossfadeAnim.stop()
-        prevArtUrl = curArtUrl
-        coverFadeOpacity = 0.0
-        coverFadeScale = 0.90
-        pendingCoverAnim = true
-        curArtUrl = url
-        // If already cached/Ready synchronously, kick animation on next clean frame
-        if (coverCur.status === Image.Ready) {
-            coverKickTimer.restart()
+    }
+
+    function finishSwapAndEnter() {
+        swapWaitTimer.stop()
+        if (pendingTitle !== "") displayedTitle = pendingTitle
+        if (pendingArtist !== "") displayedArtist = pendingArtist
+        displayedAlbum = pendingAlbum
+        if (pendingArtUrl !== "") displayedArtUrl = pendingArtUrl
+        swapPhase = "entering"
+        slideInAnim.restart()
+    }
+
+    function checkReadyToEnter() {
+        if (swapPhase !== "waiting") return
+        const hasTitle = pendingTitle !== "" && pendingTitle !== displayedTitle
+        const hasFreshArt = pendingArtUrl !== "" && pendingArtUrl !== oldArtUrlBeforeSkip && artPreloader.status === Image.Ready
+        if (hasTitle && hasFreshArt) {
+            finishSwapAndEnter()
         }
     }
 
@@ -88,7 +127,16 @@ PanelWindow {
         if (liveTrackTitle !== "") syncTrackCache()
     }
     onLiveArtUrlChanged: {
-        if (liveArtUrl !== "") loadCoverSmooth(liveArtUrl)
+        if (liveArtUrl !== "") {
+            pendingArtUrl = liveArtUrl
+            if (displayedArtUrl === "") {
+                displayedArtUrl = liveArtUrl
+            } else if (swapPhase === "idle" && displayedTitle === liveTrackTitle) {
+                displayedArtUrl = liveArtUrl
+            } else {
+                checkReadyToEnter()
+            }
+        }
     }
 
     function syncTrackCache() {
@@ -99,62 +147,121 @@ PanelWindow {
         const art = activePlayer.trackArtUrl || ""
         if (t === "") return
 
-        if (art !== "") loadCoverSmooth(art)
-
+        // First track on startup: show immediately without exit slide
         if (displayedTitle === "") {
             displayedTitle = t
             displayedArtist = a
             displayedAlbum = alb
+            displayedArtUrl = art
+            pendingTitle = t
+            pendingArtist = a
+            pendingAlbum = alb
+            pendingArtUrl = art
+            oldArtUrlBeforeSkip = art
             fetchLyricsForCurrent()
             return
         }
 
-        if (t === displayedTitle) {
+        // Update pending fields cleanly (Chromium delivers title -> artist -> artUrl over ~200ms!)
+        const isNewTrack = (t !== displayedTitle && t !== pendingTitle)
+        pendingTitle = t
+        if (a !== "") pendingArtist = a
+        pendingAlbum = alb
+        if (art !== "") pendingArtUrl = art
+
+        if (isNewTrack) {
+            fetchLyricsForCurrent()
+            if (swapPhase === "idle" || swapPhase === "entering") {
+                beginTrackExit(skipDir)
+            } else if (swapPhase === "waiting") {
+                checkReadyToEnter()
+            }
+        } else if (swapPhase === "waiting") {
+            checkReadyToEnter()
+        } else if (swapPhase === "idle" && t === displayedTitle) {
             if (a !== "") displayedArtist = a
-            if (alb !== "") displayedAlbum = alb
+            displayedAlbum = alb
+            if (art !== "") displayedArtUrl = art
             fetchLyricsForCurrent()
-            return
         }
-
-        displayedTitle = t
-        displayedArtist = a
-        displayedAlbum = alb
-        textRevealAnim.stop()
-        textOpacity = 0.0
-        textLiftY = 18
-        textKickTimer.restart()
-        fetchLyricsForCurrent()
     }
 
-    // Kick animations on a clean frame AFTER async image decode & lyrics Process spawn so Qt never skips frames!
+    // Hidden async 256x256 preloader so the new cover is 100% decoded BEFORE sliding in!
+    Image {
+        id: artPreloader
+        visible: false
+        source: musicWin.pendingArtUrl
+        asynchronous: true
+        sourceSize.width: 256
+        sourceSize.height: 256
+        cache: true
+        onStatusChanged: {
+            if (status === Image.Ready) musicWin.checkReadyToEnter()
+        }
+    }
+
+    // Safety timeout: if a song has no cover art or art takes >380ms, slide in cleanly anyway!
     Timer {
-        id: coverKickTimer
-        interval: 16
+        id: swapWaitTimer
+        interval: 380
         repeat: false
         onTriggered: {
-            musicWin.pendingCoverAnim = false
-            coverCrossfadeAnim.restart()
+            if (musicWin.swapPhase === "waiting") {
+                musicWin.finishSwapAndEnter()
+            }
         }
     }
 
-    Timer {
-        id: textKickTimer
-        interval: 32
-        repeat: false
-        onTriggered: textRevealAnim.restart()
+    // Phase 1: Old song visibly glides OUT (0 -> +-96px) while holding old cover & title
+    ParallelAnimation {
+        id: slideOutAnim
+        NumberAnimation {
+            target: musicWin; property: "stageX"
+            from: 0; to: -musicWin.skipDir * 96
+            duration: 185; easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageScale"
+            from: 1.0; to: 0.88
+            duration: 185; easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageOpacity"
+            from: 1.0; to: 0.0
+            duration: 165; easing.type: Easing.InCubic
+        }
+        onFinished: {
+            musicWin.swapPhase = "waiting"
+            musicWin.checkReadyToEnter()
+            if (musicWin.swapPhase === "waiting") {
+                swapWaitTimer.restart()
+            }
+        }
     }
 
+    // Phase 2: New song (fully decoded cover + title + artist!) glides smoothly IN (+-104px -> 0, OutQuint)
     ParallelAnimation {
-        id: coverCrossfadeAnim
-        NumberAnimation { target: musicWin; property: "coverFadeOpacity"; from: 0.0; to: 1.0; duration: 440; easing.type: Easing.OutCubic }
-        NumberAnimation { target: musicWin; property: "coverFadeScale"; from: 0.90; to: 1.0; duration: 460; easing.type: Easing.OutQuint }
-        onFinished: musicWin.prevArtUrl = musicWin.curArtUrl
-    }
-
-    ParallelAnimation {
-        id: textRevealAnim
-        NumberAnimation { target: musicWin; property: "textLiftY"; from: 18; to: 0; duration: 420; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "textOpacity"; from: 0.0; to: 1.0; duration: 360; easing.type: Easing.OutCubic }
+        id: slideInAnim
+        NumberAnimation {
+            target: musicWin; property: "stageX"
+            from: musicWin.skipDir * 104; to: 0
+            duration: 420; easing.type: Easing.OutQuint
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageScale"
+            from: 0.88; to: 1.0
+            duration: 420; easing.type: Easing.OutQuint
+        }
+        NumberAnimation {
+            target: musicWin; property: "stageOpacity"
+            from: 0.0; to: 1.0
+            duration: 340; easing.type: Easing.OutCubic
+        }
+        onFinished: {
+            musicWin.swapPhase = "idle"
+            musicWin.skipDir = 1
+            musicWin.oldArtUrlBeforeSkip = musicWin.displayedArtUrl
+        }
     }
 
     ParallelAnimation {
@@ -275,9 +382,7 @@ PanelWindow {
             musicWin.syncTrackCache()
         }
         function onTrackArtUrlChanged() {
-            if (musicWin.activePlayer && (musicWin.activePlayer.trackArtUrl || "") !== "") {
-                musicWin.loadCoverSmooth(musicWin.activePlayer.trackArtUrl)
-            }
+            musicWin.syncTrackCache()
         }
         function onPositionChanged() {
             if (musicWin.activePlayer) {
@@ -487,7 +592,7 @@ PanelWindow {
 
                 Item { Layout.fillHeight: true; Layout.minimumHeight: 8; Layout.maximumHeight: 16 }
 
-                // Silky 2-Slot Preloaded Crossfade Cover + Smooth M3E Text Lift (zero jerk, zero blank flash!)
+                // Clipped Synchronized M3E Shared Axis X Stage (Cover + Title + Artist glide out & in as ONE unit!)
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 244
@@ -496,6 +601,9 @@ PanelWindow {
                     ColumnLayout {
                         anchors.fill: parent
                         spacing: 10
+                        opacity: musicWin.stageOpacity
+                        scale: musicWin.stageScale
+                        transform: Translate { x: musicWin.stageX }
 
                         // Hero Album Cover Art (192x192, ExtraLarge 24px)
                         Rectangle {
@@ -510,11 +618,10 @@ PanelWindow {
                             border.color: Theme.alpha(Theme.primary, 0.28)
                             clip: true
 
-                            // Previous cover stays rock-solid underneath while new cover decodes off-thread (256x256) & crossfades cleanly!
                             Image {
-                                id: coverPrev
+                                id: coverArt
                                 anchors.fill: parent
-                                source: musicWin.prevArtUrl
+                                source: musicWin.displayedArtUrl
                                 asynchronous: true
                                 sourceSize.width: 256
                                 sourceSize.height: 256
@@ -525,29 +632,9 @@ PanelWindow {
                                 visible: status === Image.Ready
                             }
 
-                            Image {
-                                id: coverCur
-                                anchors.fill: parent
-                                source: musicWin.curArtUrl
-                                asynchronous: true
-                                sourceSize.width: 256
-                                sourceSize.height: 256
-                                cache: true
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                                opacity: status === Image.Ready ? musicWin.coverFadeOpacity : 0.0
-                                scale: musicWin.coverFadeScale
-                                onStatusChanged: {
-                                    if (status === Image.Ready && musicWin.pendingCoverAnim) {
-                                        coverKickTimer.restart()
-                                    }
-                                }
-                            }
-
                             M3Icon {
                                 anchors.centerIn: parent
-                                visible: coverPrev.status !== Image.Ready && coverCur.status !== Image.Ready
+                                visible: !coverArt.visible
                                 name: "album"
                                 size: 72
                                 filled: true
@@ -555,12 +642,11 @@ PanelWindow {
                             }
                         }
 
-                        // Track Title + Artist (calm vertical M3E reveal)
+                        // Track Title + Artist (subtle horizontal parallax inside stage)
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            opacity: musicWin.textOpacity
-                            transform: Translate { y: musicWin.textLiftY }
+                            transform: Translate { x: musicWin.stageX * 0.22 }
 
                             M3Text {
                                 role: "headline"
@@ -627,7 +713,12 @@ PanelWindow {
                         iconName: "skip_previous"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                        onTriggered: {
+                            if (musicWin.activePlayer) {
+                                musicWin.beginTrackExit(-1)
+                                musicWin.activePlayer.previous()
+                            }
+                        }
                     }
 
                     // Hero M3 Expressive Morphing Play/Pause Button (Equal 76x76: Squircle Playing <-> Perfect Circle Paused!)
@@ -687,7 +778,12 @@ PanelWindow {
                         iconName: "skip_next"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.next()
+                        onTriggered: {
+                            if (musicWin.activePlayer) {
+                                musicWin.beginTrackExit(1)
+                                musicWin.activePlayer.next()
+                            }
+                        }
                     }
 
                     DeskMediaBtn {
