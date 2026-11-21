@@ -19,11 +19,14 @@ Item {
 
     implicitHeight: showTimestamps ? (trackBoxHeight + timeFontSize + 6) : trackBoxHeight
 
-    readonly property bool isPlaying: player ? !!player.isPlaying : false
+    property var playingOverride: undefined
+    property bool holdAtZero: false
+
+    readonly property bool isPlaying: playingOverride !== undefined ? !!playingOverride : (player ? !!player.isPlaying : false)
     readonly property double trackLen: (player && player.length > 0) ? player.length : 0
     readonly property bool hasKnownLength: trackLen > 0.5
 
-    // Smooth monotonic wall-clock position tracker (immune to Chromium/Electron 1s MPRIS jitter!)
+    // Smooth monotonic wall-clock position tracker (immune to Chromium/Electron 1s jitter & pause jump-to-end!)
     property double anchorPos: 0
     property double anchorMs: Date.now()
     property double currentPos: 0
@@ -31,41 +34,55 @@ Item {
     property real dragRatio: 0
 
     function setAnchor(sec) {
-        const clamped = hasKnownLength ? Math.max(0, Math.min(trackLen, sec)) : Math.max(0, sec)
+        const safeSec = (typeof sec === "number" && !isNaN(sec) && sec >= 0) ? sec : 0
+        const clamped = hasKnownLength ? Math.max(0, Math.min(trackLen, safeSec)) : safeSec
         anchorPos = clamped
         anchorMs = Date.now()
         currentPos = clamped
     }
 
+    function resetToStart() {
+        anchorPos = 0
+        anchorMs = Date.now()
+        currentPos = 0
+        waveCanvas.requestPaint()
+    }
+
     function syncFromPlayer(force) {
-        if (!player || dragging) return
+        if (!player || dragging || holdAtZero) return
+        // Never let spurious MPRIS position spikes jump the handle to the end while paused!
+        if (!force && !isPlaying) return
         const p = player.position
         if (typeof p === "number" && !isNaN(p) && p >= 0) {
-            if (force || Math.abs(p - currentPos) > 1.5) {
+            // Ignore bogus microsecond/overflow values exceeding trackLen + 2s
+            if (hasKnownLength && p > trackLen + 2.0) return
+            if (force || Math.abs(p - currentPos) > 1.8) {
                 setAnchor(p)
             }
         }
     }
 
-    // Refresh initial position once on mount / player attach / real track switch / real D-Bus seek ONLY!
     Component.onCompleted: syncFromPlayer(true)
     onPlayerChanged: syncFromPlayer(true)
-    onIsPlayingChanged: {
-        if (isPlaying) {
-            // Resume smoothly from exact paused position (no backwards snap!)
+    onHoldAtZeroChanged: {
+        if (holdAtZero) {
+            resetToStart()
+        } else {
             anchorPos = currentPos
             anchorMs = Date.now()
-        } else {
-            // Freeze cleanly at exact current position
-            anchorPos = currentPos
         }
+    }
+    onIsPlayingChanged: {
+        // Always lock BOTH anchorPos and anchorMs cleanly on play/pause so handle NEVER jumps!
+        anchorPos = currentPos
+        anchorMs = Date.now()
     }
 
     Connections {
         target: scrubber.player
         function onPositionChanged() { scrubber.syncFromPlayer(false) }
-        function onTrackTitleChanged() { scrubber.setAnchor(0) }
-        function onPostTrackChanged() { scrubber.setAnchor(0) }
+        function onTrackTitleChanged() { scrubber.resetToStart() }
+        function onPostTrackChanged() { scrubber.resetToStart() }
     }
 
     readonly property real progress: {
@@ -91,10 +108,16 @@ Item {
         running: scrubber.visible && scrubber.activeAnimation && (scrubber.isPlaying || scrubber.waveAmp > 0.05)
         repeat: true
         onTriggered: {
-            if (scrubber.isPlaying && !scrubber.dragging) {
+            if (scrubber.isPlaying && !scrubber.dragging && !scrubber.holdAtZero) {
                 const elapsed = Math.max(0, (Date.now() - scrubber.anchorMs) / 1000.0)
-                const nextPos = scrubber.anchorPos + elapsed
-                scrubber.currentPos = scrubber.hasKnownLength ? Math.min(scrubber.trackLen, nextPos) : nextPos
+                // Guard against huge elapsed jump if timer was suspended/resumed
+                if (elapsed < 3.0) {
+                    const nextPos = scrubber.anchorPos + elapsed
+                    scrubber.currentPos = scrubber.hasKnownLength ? Math.min(scrubber.trackLen, nextPos) : nextPos
+                } else {
+                    scrubber.anchorPos = scrubber.currentPos
+                    scrubber.anchorMs = Date.now()
+                }
             }
             scrubber.wavePhase = (scrubber.wavePhase + 0.11) % (Math.PI * 2)
             waveCanvas.requestPaint()

@@ -94,6 +94,16 @@ PanelWindow {
     function beginTrackExit(dir) {
         skipDir = dir || 1
         oldArtUrlBeforeSkip = displayedArtUrl
+        // Clear stale pendingArtUrl if it still belongs to the old track so we never reuse old art on Prev/Next!
+        if (pendingArtUrl === displayedArtUrl) pendingArtUrl = ""
+        // Immediately reset scrubber & livePos to 0:00 (zero 0.5s lag at old song position!)
+        livePos = 0
+        if (typeof deskScrubber !== "undefined" && deskScrubber) deskScrubber.resetToStart()
+        // Smoothly glide old lyrics out in sync with the track slide-out
+        if (lyricsLines.length > 0) {
+            lyricsRevealAnim.stop()
+            lyricsExitAnim.restart()
+        }
         swapWaitTimer.stop()
         slideInAnim.stop()
         if (swapPhase === "idle" || swapPhase === "entering") {
@@ -107,7 +117,11 @@ PanelWindow {
         if (pendingTitle !== "") displayedTitle = pendingTitle
         if (pendingArtist !== "") displayedArtist = pendingArtist
         displayedAlbum = pendingAlbum
-        if (pendingArtUrl !== "") displayedArtUrl = pendingArtUrl
+        if (pendingArtUrl !== "") {
+            displayedArtUrl = pendingArtUrl
+        } else if (liveArtUrl !== "" && liveArtUrl !== oldArtUrlBeforeSkip) {
+            displayedArtUrl = liveArtUrl
+        }
         swapPhase = "entering"
         slideInAnim.restart()
     }
@@ -131,7 +145,8 @@ PanelWindow {
             pendingArtUrl = liveArtUrl
             if (displayedArtUrl === "") {
                 displayedArtUrl = liveArtUrl
-            } else if (swapPhase === "idle" && displayedTitle === liveTrackTitle) {
+            } else if (swapPhase === "idle" || swapPhase === "entering") {
+                // Always catch late-arriving cover art (e.g. after Prev/Next when Chromium writes /tmp art slightly later!)
                 displayedArtUrl = liveArtUrl
             } else {
                 checkReadyToEnter()
@@ -200,16 +215,23 @@ PanelWindow {
         }
     }
 
-    // Safety timeout: if a song has no cover art or art takes >380ms, slide in cleanly anyway!
+    // Safety timeout: if a song has no cover art or art takes >450ms, slide in cleanly anyway!
     Timer {
         id: swapWaitTimer
-        interval: 380
+        interval: 450
         repeat: false
         onTriggered: {
             if (musicWin.swapPhase === "waiting") {
                 musicWin.finishSwapAndEnter()
             }
         }
+    }
+
+    // Smooth lyrics exit glide synchronized with track slide-out
+    ParallelAnimation {
+        id: lyricsExitAnim
+        NumberAnimation { target: musicWin; property: "lyricsLiftY"; from: 0; to: -12; duration: 165; easing.type: Easing.InCubic }
+        NumberAnimation { target: musicWin; property: "lyricsOpacity"; from: 1.0; to: 0.0; duration: 150; easing.type: Easing.InCubic }
     }
 
     // Phase 1: Old song visibly glides OUT (0 -> +-96px) while holding old cover & title
@@ -260,6 +282,17 @@ PanelWindow {
         onFinished: {
             musicWin.swapPhase = "idle"
             musicWin.skipDir = 1
+            if (musicWin.pendingTitle !== "" && musicWin.displayedTitle !== musicWin.pendingTitle) {
+                musicWin.displayedTitle = musicWin.pendingTitle
+            }
+            if (musicWin.pendingArtist !== "" && musicWin.displayedArtist !== musicWin.pendingArtist) {
+                musicWin.displayedArtist = musicWin.pendingArtist
+            }
+            if (musicWin.pendingArtUrl !== "" && musicWin.displayedArtUrl !== musicWin.pendingArtUrl) {
+                musicWin.displayedArtUrl = musicWin.pendingArtUrl
+            } else if (musicWin.liveArtUrl !== "" && musicWin.displayedArtUrl !== musicWin.liveArtUrl) {
+                musicWin.displayedArtUrl = musicWin.liveArtUrl
+            }
             musicWin.oldArtUrlBeforeSkip = musicWin.displayedArtUrl
         }
     }
@@ -361,8 +394,22 @@ PanelWindow {
         }
         if (idx !== activeLyricIndex) {
             activeLyricIndex = idx
-            if (idx >= 0) lyricsList.positionViewAtIndex(idx, ListView.Center)
+            if (idx >= 0) scrollLyricsTo(idx)
         }
+    }
+
+    function scrollLyricsTo(idx) {
+        if (!lyricsList || lyricsList.count === 0) return
+        const item = lyricsList.itemAtIndex(idx)
+        if (!item) {
+            lyricsList.positionViewAtIndex(idx, ListView.Center)
+            return
+        }
+        const maxY = Math.max(0, lyricsList.contentHeight - lyricsList.height)
+        const targetY = Math.max(0, Math.min(maxY, item.y + item.height / 2 - lyricsList.height / 2))
+        lyricsScrollAnim.stop()
+        lyricsScrollAnim.to = targetY
+        lyricsScrollAnim.start()
     }
 
     Connections {
@@ -678,6 +725,8 @@ PanelWindow {
                     id: deskScrubber
                     Layout.fillWidth: true
                     player: musicWin.activePlayer
+                    playingOverride: musicWin.isActuallyPlaying
+                    holdAtZero: musicWin.swapPhase === "exiting" || musicWin.swapPhase === "waiting"
                     activeColor: Theme.primary
                     inactiveColor: Theme.alpha(Theme.fgSurfaceVariant, 0.28)
                     textColor: Theme.fgSurfaceVariant
@@ -870,6 +919,14 @@ PanelWindow {
                         visible: musicWin.lyricsLines.length > 0
                         opacity: musicWin.lyricsOpacity
                         transform: Translate { y: musicWin.lyricsLiftY }
+
+                        NumberAnimation {
+                            id: lyricsScrollAnim
+                            target: lyricsList
+                            property: "contentY"
+                            duration: 420
+                            easing.type: Easing.OutQuint
+                        }
 
                         delegate: Item {
                             required property var modelData
