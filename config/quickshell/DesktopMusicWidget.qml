@@ -16,31 +16,114 @@ PanelWindow {
     id: musicWin
 
     readonly property var playersList: Mpris.players.values || []
+    property string lastPlayerId: ""
     readonly property var activePlayer: {
         if (!playersList || playersList.length === 0) return null
+        // 1) Prefer any actively playing player
         for (let i = 0; i < playersList.length; i++) {
             if (playersList[i] && playersList[i].isPlaying) return playersList[i]
         }
-        return null
+        // 2) Keep the previously active player while paused or switching tracks
+        if (lastPlayerId !== "") {
+            for (let i = 0; i < playersList.length; i++) {
+                if (playersList[i] && (playersList[i].identity || "") === lastPlayerId) return playersList[i]
+            }
+        }
+        // 3) Otherwise pick first available player with metadata (or first running music service)
+        for (let i = 0; i < playersList.length; i++) {
+            if (playersList[i] && (playersList[i].trackTitle || "") !== "") return playersList[i]
+        }
+        return playersList[0] || null
     }
 
-    // Strictly hide when music is not playing!
-    readonly property bool musicPlaying: activePlayer !== null && !!activePlayer.isPlaying && (activePlayer.trackTitle || "") !== ""
+    onActivePlayerChanged: {
+        if (activePlayer && (activePlayer.identity || "") !== "") {
+            lastPlayerId = activePlayer.identity
+        }
+        syncTrackCache()
+    }
 
-    property bool animShown: false
-    visible: musicPlaying || hideTimer.running
+    readonly property bool isActuallyPlaying: activePlayer !== null && !!activePlayer.isPlaying
+    // Stay visible while paused or switching tracks; hide ONLY when all music services are closed!
+    readonly property bool hasMusicService: activePlayer !== null
 
-    onMusicPlayingChanged: {
-        if (musicPlaying) {
-            hideTimer.stop()
-            showTick.restart()
+    // Cached track metadata prevents blank flashes during brief track-switch gaps
+    property string cachedTitle: ""
+    property string cachedArtist: ""
+    property string cachedAlbum: ""
+    property string cachedArtUrl: ""
+    property int trackDir: 1
+    property real trackSlideX: 0
+    property real trackScale: 1.0
+    property real trackOpacity: 1.0
+
+    function triggerTrackTransition(dir) {
+        trackDir = dir || 1
+        trackSwitchAnim.stop()
+        trackSlideX = trackDir * 22
+        trackScale = 0.93
+        trackOpacity = 0.0
+        trackSwitchAnim.start()
+    }
+
+    function syncTrackCache() {
+        if (!activePlayer) return
+        const t = activePlayer.trackTitle || ""
+        const a = activePlayer.trackArtist || activePlayer.identity || ""
+        const alb = activePlayer.trackAlbum || ""
+        const art = activePlayer.trackArtUrl || ""
+        if (t !== "") {
+            if (cachedTitle !== "" && t !== cachedTitle) {
+                triggerTrackTransition(trackDir)
+            }
+            cachedTitle = t
+            cachedArtist = a
+            cachedAlbum = alb
+            if (art !== "") cachedArtUrl = art
+            else if (t !== lastTrackKey.split("||")[1]) cachedArtUrl = ""
             fetchLyricsForCurrent()
-        } else {
-            animShown = false
-            hideTimer.restart()
         }
     }
 
+    ParallelAnimation {
+        id: trackSwitchAnim
+        NumberAnimation { target: musicWin; property: "trackSlideX"; to: 0; duration: 280; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "trackScale"; to: 1.0; duration: 280; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "trackOpacity"; to: 1.0; duration: 240; easing.type: Easing.OutCubic }
+    }
+
+    property bool animShown: false
+    visible: hasMusicService || closeGraceTimer.running || hideTimer.running
+
+    onHasMusicServiceChanged: {
+        if (hasMusicService) {
+            closeGraceTimer.stop()
+            hideTimer.stop()
+            showTick.restart()
+            syncTrackCache()
+        } else {
+            // Brief grace period so restarting/re-registering a player never causes flicker
+            closeGraceTimer.restart()
+        }
+    }
+
+    Component.onCompleted: {
+        if (hasMusicService) {
+            showTick.restart()
+            syncTrackCache()
+        }
+    }
+
+    Timer {
+        id: closeGraceTimer
+        interval: 650
+        onTriggered: {
+            if (!musicWin.hasMusicService) {
+                musicWin.animShown = false
+                hideTimer.restart()
+            }
+        }
+    }
     Timer { id: showTick; interval: 10; onTriggered: musicWin.animShown = true }
     Timer { id: hideTimer; interval: 260 }
 
@@ -105,10 +188,15 @@ PanelWindow {
         target: musicWin.activePlayer
         function onTrackTitleChanged() {
             musicWin.livePos = 0
-            musicWin.fetchLyricsForCurrent()
+            musicWin.syncTrackCache()
         }
         function onTrackArtistChanged() {
-            musicWin.fetchLyricsForCurrent()
+            musicWin.syncTrackCache()
+        }
+        function onTrackArtUrlChanged() {
+            if (musicWin.activePlayer && (musicWin.activePlayer.trackArtUrl || "") !== "") {
+                musicWin.cachedArtUrl = musicWin.activePlayer.trackArtUrl
+            }
         }
         function onPositionChanged() {
             if (musicWin.activePlayer) {
@@ -123,7 +211,7 @@ PanelWindow {
 
     Timer {
         interval: 250
-        running: musicWin.visible && musicWin.musicPlaying
+        running: musicWin.visible && musicWin.isActuallyPlaying
         repeat: true
         onTriggered: {
             if (!musicWin.activePlayer) return
@@ -210,7 +298,7 @@ PanelWindow {
         transformOrigin: Item.TopRight
 
         Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        Behavior on scale { SpringAnimation { spring: 4.6; damping: 0.36; epsilon: 0.002 } }
+        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutQuint } }
         Behavior on color { ColorAnimation { duration: 220 } }
 
         // Subtle ambient tonal wash from tertiary_container (M3 Expressive editorial depth!)
@@ -263,7 +351,7 @@ PanelWindow {
                                 property real ph: 0.0
                                 Timer {
                                     interval: 50
-                                    running: musicWin.visible && musicWin.musicPlaying
+                                    running: musicWin.visible && musicWin.isActuallyPlaying
                                     repeat: true
                                     onTriggered: deskWave.ph = (deskWave.ph + 0.35) % (Math.PI * 2)
                                 }
@@ -273,8 +361,11 @@ PanelWindow {
                                         required property real modelData
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 2.5; radius: 1.5
-                                        height: 4 + 7 * (0.5 + 0.5 * Math.sin(deskWave.ph + modelData))
+                                        height: musicWin.isActuallyPlaying
+                                            ? (4 + 7 * (0.5 + 0.5 * Math.sin(deskWave.ph + modelData)))
+                                            : 4
                                         color: Theme.fgTertiaryContainer
+                                        Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                                     }
                                 }
                             }
@@ -304,7 +395,7 @@ PanelWindow {
                     }
                 }
 
-                // Hero Album Cover Art (210x210, ExtraLarge 24px!)
+                // Hero Album Cover Art (210x210, ExtraLarge 24px!) with M3 Expressive Track-Switch Animation
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     width: 210
@@ -314,11 +405,14 @@ PanelWindow {
                     border.width: 1
                     border.color: Theme.alpha(Theme.primary, 0.28)
                     clip: true
+                    opacity: musicWin.trackOpacity
+                    scale: musicWin.trackScale
+                    transform: Translate { x: musicWin.trackSlideX }
 
                     Image {
                         id: coverArt
                         anchors.fill: parent
-                        source: musicWin.activePlayer ? (musicWin.activePlayer.trackArtUrl || "") : ""
+                        source: musicWin.cachedArtUrl !== "" ? musicWin.cachedArtUrl : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtUrl || "") : "")
                         fillMode: Image.PreserveAspectCrop
                         smooth: true
                         mipmap: true
@@ -335,15 +429,17 @@ PanelWindow {
                     }
                 }
 
-                // Track Title + Artist
+                // Track Title + Artist with M3 Expressive Emphasized Decelerate Glide
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
+                    opacity: musicWin.trackOpacity
+                    transform: Translate { x: musicWin.trackSlideX * 0.72 }
 
                     M3Text {
                         role: "headline"
                         customSize: 17
-                        text: musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "") : ""
+                        text: musicWin.cachedTitle !== "" ? musicWin.cachedTitle : (musicWin.activePlayer ? (musicWin.activePlayer.trackTitle || "Ожидание трека") : "")
                         color: Theme.fgSurface
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -353,7 +449,7 @@ PanelWindow {
                     M3Text {
                         role: "label"
                         customSize: 12
-                        text: musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : ""
+                        text: musicWin.cachedArtist !== "" ? musicWin.cachedArtist : (musicWin.activePlayer ? (musicWin.activePlayer.trackArtist || musicWin.activePlayer.identity || "") : "")
                         color: Theme.primary
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -399,38 +495,43 @@ PanelWindow {
                         iconName: "skip_previous"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                        onTriggered: {
+                            musicWin.trackDir = -1
+                            if (musicWin.activePlayer) musicWin.activePlayer.previous()
+                        }
                     }
 
-                    // Hero M3 Expressive Morphing Squircle Play/Pause Button (XL 108x68)
+                    // Hero M3 Expressive Morphing Play/Pause Button (Squircle 24px Playing <-> Full Pill 34px Paused!)
                     Rectangle {
                         Layout.preferredWidth: 108
                         Layout.preferredHeight: 68
                         width: 108
                         height: 68
-                        radius: dPlayA.pressed ? 16 : 24
+                        radius: dPlayA.pressed ? 16 : (musicWin.isActuallyPlaying ? 24 : 34)
                         color: Theme.primary
-                        scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.06 : 1.0)
+                        scale: dPlayA.pressed ? 0.92 : (dPlayA.containsMouse ? 1.05 : 1.0)
 
-                        Behavior on radius { SpringAnimation { spring: 5.2; damping: 0.34 } }
-                        Behavior on scale { SpringAnimation { spring: 6.0; damping: 0.38 } }
+                        Behavior on radius { NumberAnimation { duration: 240; easing.type: Easing.OutQuint } }
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         Behavior on color { ColorAnimation { duration: 180 } }
 
                         Row {
                             anchors.centerIn: parent
+                            visible: musicWin.isActuallyPlaying
+                            opacity: musicWin.isActuallyPlaying ? 1.0 : 0.0
                             spacing: 8
-                            Rectangle {
-                                width: 9
-                                height: 28
-                                radius: 4.5
-                                color: Theme.fgPrimary
-                            }
-                            Rectangle {
-                                width: 9
-                                height: 28
-                                radius: 4.5
-                                color: Theme.fgPrimary
-                            }
+                            Rectangle { width: 9; height: 28; radius: 4.5; color: Theme.fgPrimary }
+                            Rectangle { width: 9; height: 28; radius: 4.5; color: Theme.fgPrimary }
+                        }
+
+                        M3Icon {
+                            anchors.centerIn: parent
+                            visible: !musicWin.isActuallyPlaying
+                            opacity: musicWin.isActuallyPlaying ? 0.0 : 1.0
+                            name: "play_arrow"
+                            size: 40
+                            filled: true
+                            color: Theme.fgPrimary
                         }
 
                         MouseArea {
@@ -446,7 +547,10 @@ PanelWindow {
                         iconName: "skip_next"
                         btnSize: 52
                         iconSize: 27
-                        onTriggered: if (musicWin.activePlayer) musicWin.activePlayer.next()
+                        onTriggered: {
+                            musicWin.trackDir = 1
+                            if (musicWin.activePlayer) musicWin.activePlayer.next()
+                        }
                     }
 
                     DeskMediaBtn {
