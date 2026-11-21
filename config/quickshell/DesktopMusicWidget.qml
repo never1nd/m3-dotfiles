@@ -58,6 +58,8 @@ PanelWindow {
         lyricsRevealAnim.start()
     }
 
+    property bool pendingCoverAnim: false
+
     function loadCoverSmooth(url) {
         if (!url || url === "" || url === curArtUrl) return
         if (curArtUrl === "") {
@@ -65,11 +67,19 @@ PanelWindow {
             prevArtUrl = url
             coverFadeOpacity = 1.0
             coverFadeScale = 1.0
+            pendingCoverAnim = false
             return
         }
+        coverCrossfadeAnim.stop()
         prevArtUrl = curArtUrl
+        coverFadeOpacity = 0.0
+        coverFadeScale = 0.90
+        pendingCoverAnim = true
         curArtUrl = url
-        coverCrossfadeAnim.restart()
+        // If already cached/Ready synchronously, kick animation on next clean frame
+        if (coverCur.status === Image.Ready) {
+            coverKickTimer.restart()
+        }
     }
 
     readonly property string liveTrackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
@@ -109,21 +119,42 @@ PanelWindow {
         displayedTitle = t
         displayedArtist = a
         displayedAlbum = alb
-        textRevealAnim.restart()
+        textRevealAnim.stop()
+        textOpacity = 0.0
+        textLiftY = 18
+        textKickTimer.restart()
         fetchLyricsForCurrent()
+    }
+
+    // Kick animations on a clean frame AFTER async image decode & lyrics Process spawn so Qt never skips frames!
+    Timer {
+        id: coverKickTimer
+        interval: 16
+        repeat: false
+        onTriggered: {
+            musicWin.pendingCoverAnim = false
+            coverCrossfadeAnim.restart()
+        }
+    }
+
+    Timer {
+        id: textKickTimer
+        interval: 32
+        repeat: false
+        onTriggered: textRevealAnim.restart()
     }
 
     ParallelAnimation {
         id: coverCrossfadeAnim
-        NumberAnimation { target: musicWin; property: "coverFadeOpacity"; from: 0.0; to: 1.0; duration: 380; easing.type: Easing.OutCubic }
-        NumberAnimation { target: musicWin; property: "coverFadeScale"; from: 0.93; to: 1.0; duration: 400; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "coverFadeOpacity"; from: 0.0; to: 1.0; duration: 440; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "coverFadeScale"; from: 0.90; to: 1.0; duration: 460; easing.type: Easing.OutQuint }
         onFinished: musicWin.prevArtUrl = musicWin.curArtUrl
     }
 
     ParallelAnimation {
         id: textRevealAnim
-        NumberAnimation { target: musicWin; property: "textLiftY"; from: 14; to: 0; duration: 360; easing.type: Easing.OutQuint }
-        NumberAnimation { target: musicWin; property: "textOpacity"; from: 0.0; to: 1.0; duration: 300; easing.type: Easing.OutCubic }
+        NumberAnimation { target: musicWin; property: "textLiftY"; from: 18; to: 0; duration: 420; easing.type: Easing.OutQuint }
+        NumberAnimation { target: musicWin; property: "textOpacity"; from: 0.0; to: 1.0; duration: 360; easing.type: Easing.OutCubic }
     }
 
     ParallelAnimation {
@@ -479,11 +510,14 @@ PanelWindow {
                             border.color: Theme.alpha(Theme.primary, 0.28)
                             clip: true
 
-                            // Previous cover stays rock-solid underneath while new cover crossfades cleanly on top!
+                            // Previous cover stays rock-solid underneath while new cover decodes off-thread (256x256) & crossfades cleanly!
                             Image {
                                 id: coverPrev
                                 anchors.fill: parent
                                 source: musicWin.prevArtUrl
+                                asynchronous: true
+                                sourceSize.width: 256
+                                sourceSize.height: 256
                                 cache: true
                                 fillMode: Image.PreserveAspectCrop
                                 smooth: true
@@ -495,12 +529,20 @@ PanelWindow {
                                 id: coverCur
                                 anchors.fill: parent
                                 source: musicWin.curArtUrl
+                                asynchronous: true
+                                sourceSize.width: 256
+                                sourceSize.height: 256
                                 cache: true
                                 fillMode: Image.PreserveAspectCrop
                                 smooth: true
                                 mipmap: true
                                 opacity: status === Image.Ready ? musicWin.coverFadeOpacity : 0.0
                                 scale: musicWin.coverFadeScale
+                                onStatusChanged: {
+                                    if (status === Image.Ready && musicWin.pendingCoverAnim) {
+                                        coverKickTimer.restart()
+                                    }
+                                }
                             }
 
                             M3Icon {
