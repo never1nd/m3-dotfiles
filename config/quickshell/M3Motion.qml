@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import Quickshell
 
 /* Official Material Design 3 Expressive Motion Tokens (Qt6 Easing.BezierSpline)
  * Adapted from Google M3 Expressive specs, end-4/dots-hyprland & caelestia-dots/shell.
