@@ -55,21 +55,18 @@ PanelWindow {
 
     readonly property var outputSinks: {
         const list = Pipewire.nodes.values || []
-        return list.filter(n => {
-            if (!n || !n.isSink || n.isStream || !n.audio) return false
-            const props = n.properties || {}
-            const mc = String(props["media.class"] || "")
-            return mc === "" || mc.indexOf("Audio/Sink") !== -1
-        })
+        return list.filter(n => n && n.isSink && !n.isStream)
     }
 
+    // Include ALL playback stream nodes immediately (do NOT filter on n.audio here because
+    // PwObjectTracker populates n.audio asynchronously AFTER Pipewire.nodes.values emits!)
     readonly property var appStreams: {
         const list = Pipewire.nodes.values || []
         return list.filter(n => {
-            if (!n || !n.isStream || n.isSink || !n.audio) return false
+            if (!n || !n.isStream || n.isSink) return false
             const props = n.properties || {}
             const mc = String(props["media.class"] || "")
-            if (mc !== "" && mc.indexOf("Output/Audio") === -1) return false
+            if (mc.indexOf("Input/Audio") !== -1 || mc.indexOf("Video") !== -1) return false
             return true
         })
     }
@@ -426,9 +423,12 @@ PanelWindow {
                                 delegate: Rectangle {
                                     id: appRowCard
                                     required property var modelData
-                                    readonly property var aud: modelData ? modelData.audio : null
+                                    readonly property bool isReady: modelData ? !!modelData.ready : false
+                                    readonly property var aud: (isReady && modelData) ? modelData.audio : null
+                                    readonly property string mediaClass: (isReady && modelData && modelData.properties) ? String(modelData.properties["media.class"] || "") : ""
+                                    visible: isReady && aud !== null && (mediaClass === "" || mediaClass.indexOf("Output/Audio") !== -1)
                                     Layout.fillWidth: true
-                                    implicitHeight: appRowCol.implicitHeight + 18
+                                    implicitHeight: visible ? (appRowCol.implicitHeight + 18) : 0
                                     radius: 18
                                     color: Theme.surfaceContainerHigh
 
@@ -460,7 +460,7 @@ PanelWindow {
                                             M3Text {
                                                 role: "labelEmphasized"
                                                 customSize: 12
-                                                text: volWindow.nodeLabel(appRowCard.modelData, "Приложение")
+                                                text: appRowCard.isReady ? volWindow.nodeLabel(appRowCard.modelData, "Приложение") : "Приложение"
                                                 color: Theme.fgSurface
                                                 elide: Text.ElideRight
                                                 Layout.fillWidth: true
