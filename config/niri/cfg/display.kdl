@@ -1,5 +1,12 @@
-// ────────────── Output Configuration ──────────────
-output "HDMI-A-1" {
+// ────────────── Output Configuration (per-display EDID matching!) ──────────────
+// Desktop 1080p 144Hz monitor
+output "Microstep MSI G242 0x00001745" {
     mode "1920x1080@143.998"
     scale 1
+}
+
+// 4K Beyond TV — integer 2x HiDPI scaling (crisp 4K rendering with 1920x1080 logical layout!)
+output "PNP(XXX) Beyond TV 0x00010000" {
+    mode "3840x2160@60.000"
+    scale 2
 }
